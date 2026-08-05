@@ -1,0 +1,7 @@
+.venv/
+.env
+temp/
+__pycache__/
+*.pyc
+*.log
+licenses.db

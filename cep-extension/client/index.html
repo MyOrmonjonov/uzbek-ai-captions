@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Uzbek AI Captions</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <div class="panel">
+        <header class="header">
+            <div class="brand">
+                <span class="brand-mark">CC</span>
+                <div class="brand-text">
+                    <span class="brand-title">Uzbek AI Captions</span>
+                    <span class="brand-sub">O'zbek AI subtitr</span>
+                </div>
+            </div>
+            <span id="license-badge" class="license-badge" hidden></span>
+            <span id="conn-dot" class="conn-dot" title="Backend holati tekshirilmoqda..."></span>
+        </header>
+
+        <div id="activation-screen" class="activation-screen" hidden>
+            <p class="activation-intro">Plaginni ishlatish uchun faollashtirish kerak.</p>
+
+            <section class="field">
+                <label>Qurilma kodi</label>
+                <div class="combo-row">
+                    <div class="file-card">
+                        <span id="device-code-text" class="file-text">Yuklanmoqda...</span>
+                    </div>
+                    <button type="button" id="copy-code-btn" class="icon-btn" title="Nusxalash">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="8" y="8" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                            <path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </button>
+                </div>
+            </section>
+
+            <p class="activation-help">Ushbu kodni faollashtirish botiga yuboring, to'lovni amalga oshiring va bot bergan tokenni pastga kiriting.</p>
+
+            <section class="field">
+                <label>Token</label>
+                <input type="text" id="token-input" class="lang-select" placeholder="Tokenni shu yerga joylashtiring" />
+            </section>
+
+            <button id="activate-btn" class="btn primary">
+                <span class="spinner" aria-hidden="true"></span>
+                <span class="btn-label">Faollashtirish</span>
+            </button>
+
+            <div id="activation-status" class="status">
+                <span class="status-spinner" aria-hidden="true"></span>
+                <span id="activation-status-text"></span>
+            </div>
+        </div>
+
+        <div id="main-content" hidden>
+
+        <section class="field">
+            <label>Video</label>
+            <div class="combo-row">
+                <div id="file-path" class="file-card">
+                    <svg class="file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3.5" y="4.5" width="17" height="15" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 4.5v15M16 4.5v15M3.5 9.5h4M3.5 14.5h4M16 9.5h4.5M16 14.5h4.5" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                    <span id="file-path-text" class="file-text">Video aniqlanmoqda...</span>
+                </div>
+                <button type="button" id="refresh-btn" class="icon-btn" title="Qayta aniqlash">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20 11A8 8 0 1 0 18.5 15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        <path d="M20 5v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </section>
+
+        <section class="field">
+            <label>Subtitr uslubi</label>
+            <div id="style-segmented" class="segmented">
+                <button type="button" class="segment-btn" data-max-lines="1" data-words-per-line="4">1 qator</button>
+                <button type="button" class="segment-btn selected" data-max-lines="2" data-words-per-line="5">2 qator</button>
+                <button type="button" class="segment-btn" data-max-lines="3" data-words-per-line="6">3 qator</button>
+            </div>
+        </section>
+
+        <section class="toggle-row">
+            <label class="toggle-label" for="translate-toggle">Boshqa tilga tarjima</label>
+            <button type="button" id="translate-toggle" class="toggle" role="switch" aria-checked="false"></button>
+        </section>
+
+        <div id="translate-panel" class="translate-panel" hidden>
+            <select id="translate-lang" class="lang-select">
+                <option value="en">Ingliz tili</option>
+                <option value="ru">Rus tili</option>
+                <option value="tr">Turk tili</option>
+                <option value="kk">Qozoq tili</option>
+                <option value="ar">Arab tili</option>
+                <option value="zh">Xitoy tili</option>
+                <option value="fr">Fransuz tili</option>
+                <option value="de">Nemis tili</option>
+            </select>
+        </div>
+
+        <section class="toggle-row">
+            <label class="toggle-label" for="advanced-toggle">Ko'proq sozlama</label>
+            <button type="button" id="advanced-toggle" class="toggle" role="switch" aria-checked="false"></button>
+        </section>
+
+        <div id="advanced-panel" class="advanced-panel" hidden>
+            <div class="slider-field">
+                <div class="slider-head">
+                    <span>Qatorlar soni</span>
+                    <span id="max-lines-badge" class="badge">2</span>
+                </div>
+                <input type="range" id="max-lines-slider" min="1" max="3" step="1" value="2" />
+            </div>
+            <div class="slider-field">
+                <div class="slider-head">
+                    <span>Har qatorda so'z</span>
+                    <span id="words-per-line-badge" class="badge">5</span>
+                </div>
+                <input type="range" id="words-per-line-slider" min="1" max="8" step="1" value="5" />
+            </div>
+            <label class="preview-label">Namuna:</label>
+            <div id="preview-box" class="preview-box"></div>
+        </div>
+
+        <button id="generate-btn" class="btn primary">
+            <span class="spinner" aria-hidden="true"></span>
+            <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M5 3v4M3 5h4M13.5 3l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7 1.7-5z" fill="currentColor"/>
+                <path d="M18 15v3M16.5 16.5h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+            <span class="btn-label">Subtitr yaratish</span>
+        </button>
+
+        <div id="status" class="status">
+            <span class="status-spinner" aria-hidden="true"></span>
+            <span id="status-text"></span>
+        </div>
+
+        <button id="broll-btn" class="btn" hidden>B-roll takliflarini qidirish</button>
+        <div id="broll-filter-bar" class="broll-filter-bar" hidden>
+            <div id="broll-type-tabs" class="broll-type-tabs">
+                <button type="button" class="broll-tab active" data-type="all">Hammasi</button>
+                <button type="button" class="broll-tab" data-type="video">Video</button>
+                <button type="button" class="broll-tab" data-type="photo">Rasm</button>
+                <button type="button" class="broll-tab" data-type="gif">GIF</button>
+            </div>
+            <input type="text" id="broll-search" class="broll-search" placeholder="Kalit so'z bo'yicha qidirish...">
+        </div>
+        <div id="broll-list" class="broll-list"></div>
+
+        </div>
+
+        <footer class="footer">Gemini AI orqali ishlaydi</footer>
+    </div>
+
+    <script src="js/CSInterface.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
