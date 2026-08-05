@@ -36,8 +36,8 @@
                     <Menu>Uzbek AI Captions</Menu>
                     <Geometry>
                         <Size>
-                            <Height>420</Height>
-                            <Width>340</Width>
+                            <Height>720</Height>
+                            <Width>960</Width>
                         </Size>
                         <MinSize>
                             <Height>360</Height>

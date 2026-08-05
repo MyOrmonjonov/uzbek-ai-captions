@@ -315,3 +315,262 @@ Bu fayl har bir sessiyada nima qilinganini va oxirgi holatni yozib borish uchun.
 - Shundan keyin: **video timeline'da 0-sekunddan boshqa joyda yoki kesilgan holda** bo'lganda
   subtitr to'g'ri joylashishini, **Whisper-asosidagi vaqt aniqligini** va **kirill→lotin
   o'girishning haqiqiy o'zbekcha video bilan ishlashini** tekshirish.
+
+## 2026-08-05 — Git repo yaratildi (GitHub public) + Kinetic Typography (so'z-so'z animatsion matn)
+
+- **D:\Plugin git repositoryga aylantirildi va GitHub'ga yuklandi**: `git init`, root va
+  `srt_bot/.gitignore` maxfiy fayllar (API kalitlar, `.env`, `licenses.db`, log fayllar,
+  `target/`, `.idea`, `scratchpad`) chiqarib tashlanadigan qilib sozlandi. `PROGRESS.md` va
+  `srt_bot/.env.example`dagi haqiqiy karta raqami/ism/Telegram ID/Giphy API kaliti
+  `[REDACTED]` bilan almashtirildi (repo **public** bo'lgani uchun). `gh repo create` orqali
+  **https://github.com/MyOrmonjonov/uzbek-ai-captions** yaratildi va push qilindi.
+- **Foydalanuvchi so'rovi**: Swishy.ai (https://www.swishy.ai/) kabi so'z-so'z animatsion
+  subtitr ("kinetic typography") qo'shish. Tekshirildi: Swishy'da ochiq API yo'q (faqat veb
+  interfeys). Muqobil pullik cloud video-render API'lar (Creatomate ~$54/oy, Shotstack
+  ~$49/oy) ham topildi, lekin ular alohida bulutda butun videoni qayta render qiladi —
+  foydalanuvchi buni rad etib, **bepul, Premiere ichida native** yechimni tanladi.
+- **Muhim texnik cheklov**: Premiere Pro ExtendScript API'da matnni noldan kod orqali
+  animatsiyali yaratib bo'lmaydi (`app.project.addTitle()` mavjud emas, Adobe rasman
+  qo'llab-quvvatlamaydi). Yagona ishonchli yo'l — oldindan tayyorlangan Motion Graphics
+  Template (`.mogrt`) import qilib, uning matnini `TrackItem.getMGTComponent()` orqali har
+  nusxa uchun dasturiy almashtirish. Foydalanuvchi shu yo'lni tanladi.
+- **MOGRT manbasi topildi**: foydalanuvchida `D:\Telegram_Download\
+  Xojiakbarxon_UI_Plugin_PR.PRO_23-26_SKY_GLASS.zxp` bor edi — o'zining (yoki hamkorining,
+  foydalanuvchi tasdiqladi) boshqa bir CEP plagini, xuddi shu maqsad uchun 30 ta tayyor
+  `.mogrt` shablon bilan. Ichidagi `definition.json`ni tekshirib, struktura aynan biz
+  kutgan `capsuleparams.capParams[0].textEditValue`/`fontTextRunLength` shaklida ekani
+  tasdiqlandi. **20 tasi** (`Bounce_*`, `Plain_*` — soddaroq, 20-47KB, "so'z" uchun mos)
+  `cep-extension/host/assets/mogrt/`ga ko'chirildi (~640KB). `New_Animation_01-10.mogrt`
+  (2.5MB+ har biri, "Liquid Glass" og'irroq shablonlar) hozircha qo'shilmadi — strukturasi
+  tekshirilmagan.
+- **Amalga oshirildi (kod qismi)**:
+  - Backend: `TranscribeResponse`ga `words` (so'z-darajasidagi vaqt) qo'shildi —
+    ilgari `TranscriptionResult.words()` hisoblanardi-yu, lekin panelga hech qachon
+    yuborilmasdi. `TranscribeController.java` shu maydonni endi qaytaradi.
+  - Panel: yangi "Kinetic Typography" toggle + `<select>` (index.html), "Animatsion matn
+    qo'shish" tugmasi (B-roll tugmasi bilan bir xil qatorda/naqshda). `main.js` panel
+    ochilganda `listKineticStyles()`ni chaqirib select'ni **dinamik** to'ldiradi (fixed
+    3 stil emas — shu papkaga qanday `.mogrt` fayl tashlansa, o'sha avtomatik ro'yxatga
+    chiqadi, kod o'zgarishi shart emas), `lastWords` saqlanadi va tanlangan stil bilan
+    `insertKineticText(...)` host funksiyasi chaqiriladi.
+  - Host (`index.jsx`): `importSrtPremiere`/`insertBroll`dagi ikki marta takrorlangan
+    "import qilingandan keyin yangi project item'ni topish" kodi umumiy `importSingleFile()`
+    helperga chiqarildi. Yangi `getMogrtPath()`/`listKineticStyles()` (papkani skanerlaydi),
+    `setMogrtText()` (MGT komponent JSON parametrlari orasidan `textEditValue` kaliti bor
+    paramni nom bo'yicha emas, shakli bo'yicha topadi — turli AE eksportlariga chidamli),
+    `insertKineticText(style, wordsJson, sourceMediaPath)` — har so'z uchun MOGRT nusxasini
+    alohida overlay track'ga qo'yadi (subtitr/B-roll tracklaridan mustaqil,
+    `addOverlayTrack`/`overwriteClip`/`findSourceTimeZeroOffset` mavjud funksiyalari qayta
+    ishlatilgan), so'zning haqiqiy davomiyligiga qisqartiradi, matnini o'sha so'zga
+    o'rnatadi. Eski ExtendScript muhitlarida `JSON` bo'lmasligi mumkinligi uchun minimal
+    polyfill qo'shildi.
+  - `mvnw.cmd compile` va `node --check` (main.js, index.jsx) xatosiz o'tdi.
+- **Hali sinovdan o'tkazilmagan**: .mogrt fayllari endi mavjud bo'lsa-da, butun oqim
+  (toggle → stil tanlash → "Animatsion matn qo'shish" → Premiere'da haqiqiy natija) birorta
+  ham marta ishga tushirilmagan — ayniqsa `setMogrtText()`ning haqiqiy Premiere'da MGT
+  komponent parametrini topib to'g'ri o'rnatishi tasdiqlanmagan.
+
+- **Bug topildi va tuzatildi — "Animatsiya shabloni topilmadi (host/assets/mogrt bo'sh)"**:
+  foydalanuvchi Premiere'ni to'liq qayta ishga tushirgandan keyin ham shu xato chiqdi.
+  Sabab: `getMogrtFolder()` ExtendScript'dagi `$.fileName` orqali o'z joylashuvini
+  aniqlashga urinardi — bu CEP host script sifatida yuklanganda ishonchli ishlamas ekan
+  (birinchi marta shu loyihada ishlatilgan, tasdiqlanmagan taxmin edi). Tuzatildi: papka
+  yo'li endi **panel (JS) tomonida** CEP'ning rasmiy `csInterface.getSystemPath(
+  SystemPath.EXTENSION)` orqali aniqlanadi (`main.js`, `MOGRT_FOLDER`) va
+  `listKineticStyles(mogrtFolder)`/`insertKineticText(style, wordsJson, sourceMediaPath,
+  mogrtFolder)`ga argument sifatida uzatiladi. `install.bat` bilan qayta o'rnatildi.
+  **Foydalanuvchi tomonidan hali qayta sinalmagan** (Premiere yana to'liq qayta ishga
+  tushirilishi kerak — host .jsx yana o'zgardi).
+
+- **Muhim arxitektura tuzatishi — "ERROR: Animatsiya shablonini import qilib bo'lmadi."**:
+  foydalanuvchi haqiqiy Premiere'da sinaganda Premiere'ning o'zi bir dialog chiqardi:
+  "Motion Graphics Templates cannot be imported into the Project panel. We have installed
+  your Motion Graphics Templates in the Graphics Templates panel instead." Ya'ni yangi
+  Premiere versiyalarida `.mogrt` fayllar `app.project.importFiles()` orqali **umuman**
+  loyiha elementiga aylanmaydi (SRT/video fayllardan farqli) — shuning uchun bizning
+  "import qil, keyin loyiha daraxtidan top" usuli (avval `importSingleFile()` bilan qilingan,
+  hatto uni rekursiv qilib tuzatgandan keyin ham) mogrt uchun asosan ishlay olmasdi.
+  To'g'ri, rasmiy hujjatlashtirilgan yechim topildi: `Sequence.importMGT(path, ticksTime,
+  vidTrackOffset, audTrackOffset)` — MOGRT'ni loyiha elementiga aylantirmasdan **to'g'ridan-
+  to'g'ri track'ga qo'yadi** va tayyor `TrackItem` qaytaradi. `insertKineticText()` shunga
+  qarab qayta yozildi (`importSingleFile`/`overwriteClip` bosqichi olib tashlandi, endi har
+  so'z uchun bevosita `sequence.importMGT(...)` chaqiriladi). `install.bat` bilan qayta
+  o'rnatildi. **Hali sinovdan o'tkazilmagan** (Premiere yana to'liq qayta ishga tushirilishi
+  kerak).
+- **Nazorat qilinishi kerak bo'lgan noaniqlik**: `importMGT()`ning ripple-insert
+  (`insertClip()` kabi — keyingi kliplarni/boshqa tracklarni suradimi) yoki
+  overwrite-xatti-harakatga egaligi hujjatlarda aniq yozilmagan. So'zlar vaqt tartibida
+  ketma-ket qo'shilgani uchun (har biri avvalgisidan keyin joylashadi) va alohida yangi
+  overlay track ishlatilgani uchun xavf cheklangan, lekin **agar sinovda video/boshqa
+  tracklar siljib qolsa** — bu ripple-insert sababli bo'lishi mumkin, alohida tekshirish
+  kerak bo'ladi (xuddi ilgari `insertClip()` bilan bo'lgan bug kabi).
+
+- **Yana ikkita bog'liq bug topildi va tuzatildi — "ffmpeg audio ajratishda xatolik" (yo'l
+  `...\Motion Graphics Template Media\...\Bounce_character_left_bounce.aegraphic`)**:
+  foydalanuvchi keyingi safar subtitr yaratmoqchi bo'lganda, `getActiveMediaPath()` (timeline'da
+  video qidiruvchi funksiya) haqiqiy video o'rniga yangi qo'shilgan MOGRT trek elementining
+  ichki `.aegraphic` faylini "video" deb aniqlab, ffmpeg'ga shuni yuborgan.
+  - **Sabab #1**: `getActiveMediaPath()` `sequence.videoTracks[0]`dan boshlab birinchi topilgan
+    `getMediaPath()`ni qaytarardi — `.aegraphic` yo'lini filtrlab o'tkazib yubormasdi.
+    Tuzatildi: endi `.aegraphic` bilan tugaydigan yo'llar o'tkazib yuboriladi.
+  - **Sabab #2 (jiddiyroq)**: bu shuni fosh qildiki, `addOverlayTrack()` yangi trekni
+    **yuqoriga emas, pastga (index 0, orqa fon)** qo'shayotgan bo'lishi mumkin edi — QE
+    `addTracks()`ning 2-parametri (insertion index) hujjatlashtirilmagan, kod hozirgacha
+    "yangi trek doim yuqori indeksga tushadi" deb **tasdiqlanmagan taxmin** qilar edi. Agar
+    shunday bo'lsa, subtitr/B-roll/animatsion matn video **ortida yashiringan** (ko'rinmas)
+    bo'lishi kerak edi — bu hali birorta safar ham vizual tasdiqlanmagan edi (oldingi
+    sessiyalarda "Keyingi qadam" sifatida qoldirilgan, hech qachon tekshirilmagan).
+    Tuzatildi: `qeSequence.addTracks(1, 0, ...)` o'rniga endi aniq `addTracks(1,
+    tracksBefore, ...)` chaqiriladi (eng yuqori indeksga qo'shishni **aniq so'raydi**), va
+    natija tasdiqlanadi — qaysi indeks bo'sh ekanligi tekshirilib (avval yuqori, keyin pastki),
+    shungagina ishonch qilinadi (taxmin emas).
+  - `install.bat` bilan qayta o'rnatildi. **Bu ham hali sinovdan o'tkazilmagan** — eng muhim
+    tekshiruv: subtitr/B-roll/kinetic-text endi haqiqatan **video ustida ko'rinadimi**
+    (ilgari umuman tasdiqlanmagan bo'lishi mumkin).
+
+- **UI: stil tanlash preview grid + davomiylik sozlamasi qo'shildi**. Har bir `.mogrt`
+  ichida Adobe'ning o'zi render qilgan `thumb.mp4` (kichik animatsion preview) borligi
+  aniqlandi — shu 20 tasi `cep-extension/client/assets/kinetic-previews/*.mp4`ga chiqarib
+  olindi. Panelda oldingi oddiy `<select>` o'rniga endi har bir stil uchun **haqiqiy
+  animatsion preview** (loop bilan) ko'rsatadigan kartalar grid'i bor (`index.html`,
+  `main.js` — B-roll grid pattern'iga o'xshab). **Diqqat**: foydalanuvchi "oq fonda" deb
+  so'ragan edi, lekin preview videolar matni oq rangda, qora fonda — chindan oq fon qilsak
+  matn ko'rinmay qoladi (tekshirib ko'rildi, screenshot bilan tasdiqlangan) — shuning uchun
+  qora fon qoldirildi (B-roll kartalari bilan bir xil, panelning umumiy dark tema'siga mos).
+  Yana yangi slider: "Har so'z eng kamida necha soniya ko'rinsin" (`minDurationSeconds`,
+  0.1–1.5s) — `insertKineticText()`ga yangi parametr sifatida qo'shildi.
+- **Muhim bug tuzatildi — foydalanuvchi haqiqiy sinovda "animatsiya notekis, tez chiqib-
+  kirib ketyapti" deb xabar berdi**: sabab — har so'z klipi aynan o'sha so'zning
+  `word.end`igacha qisqartirilardi, lekin tabiiy nutqda so'zlar orasida doim kichik pauza
+  bor — shuning uchun matn har so'zda yonib-o'chib turardi (keyingi so'z boshlanguncha
+  bo'sh joy qolardi). Tuzatildi: endi har so'z **keyingi so'z boshlanguncha** ekranda
+  qoladi (`insertKineticText()`dagi `holdUntil` hisobi), faqat MOGRT'ning o'z tabiiy
+  uzunligidan oshib ketmaydi (uzun pauzalarda — masalan gap oxirida — baribir faqat qisqa
+  tabiiy animatsiya o'ynaydi, ekranda muzlab qolmaydi).
+- **Muhim bug — foydalanuvchi xabar berdi: "Motion Graphic Template Media" ustma-ust
+  bo'lib qolyapti, so'zlar mustaqil emas**: sabab — bir xil `.mogrt` manba fayliga bir necha
+  marta (har so'z uchun) `sequence.importMGT()` chaqirilganda, Premiere ularni **bitta
+  umumiy shablon nusxasi** sifatida bog'lab qo'yayotgan ko'rinadi — shuning uchun bitta
+  so'z instance'iga qilingan o'zgarish (matn/joylashuv) boshqalariga ham "sirg'alib"
+  ko'rinardi. Tuzatildi: endi har so'z uchun manba `.mogrt` fayli avval vaqtinchalik papkaga
+  (`Folder.temp`) **alohida jismoniy nusxa** sifatida ko'chiriladi (`word_0.mogrt`,
+  `word_1.mogrt`, ...), `importMGT()` shu noyob nusxaga chaqiriladi — Premiere'da ular endi
+  umuman bog'liq manba yo'liga ega bo'lmagani uchun mustaqil bo'lishi kerak.
+- `install.bat` bilan qayta o'rnatildi. **Hali sinovdan o'tkazilmagan** (Premiere yana
+  to'liq qayta ishga tushirilishi kerak).
+
+- **Foydalanuvchi ikkita narsa so'radi: "Your text" namunaviy matnini olib tashlash va
+  animatsiyani sekinlashtirish**:
+  - **Animatsiya tezligi**: tekshirildi — Premiere ExtendScript API'da klip tezligini
+    (time-stretch) o'zgartirish uchun **hech qanday rasmiy yo'l yo'q** (Adobe community'da
+    bir necha marta tasdiqlangan cheklov, QE DOM ham buni hujjatlashtirilmagan holda ham
+    ishonchli qo'llab-quvvatlamaydi). Yagona qo'ldagi vosita — davomiylik (necha soniya
+    ko'rinishi). Shunga ko'ra `kinetic-min-duration-slider` maksimal chegarasi 1.5s dan
+    **3.0s**ga oshirildi — foydalanuvchi so'zlarni ko'proq ekranda ushlab turib "sekinroq"
+    taassurot yaratishi mumkin (haqiqiy animatsiya tezligi emas, lekin qo'lda bor yagona
+    dastak).
+  - **"Your text" muammosi**: `setMogrtText()` ba'zan matnni muvaffaqiyatli
+    o'rnatolmayotgani (yoki o'rnatgani rendered natijaga ta'sir qilmayotgani) aniqlandi.
+    Ikki himoya chorasi qo'shildi: (1) endi **barcha** mos JSON-shakldagi parametrlar
+    yangilanadi (ilgari faqat birinchisi topilgach to'xtab qolardi — ba'zi MOGRT'larda bir
+    nechta matn-parametri bo'lishi mumkin), (2) matn endi klipni qisqartirishdan **oldin**
+    o'rnatiladi (ehtiyot chorasi — trim MGT komponent keshini tiklab yuborishi ehtimoliga
+    qarshi). **Diqqat**: bu hamon rasman hujjatlashtirilmagan texnika (Adobe community
+    manbasiga asoslangan) — agar muammo davom etsa, chuqurroq diagnostika kerak bo'ladi.
+  - `install.bat` bilan qayta o'rnatildi. **Hali sinovdan o'tkazilmagan**.
+
+### Keyingi qadam
+- Premiere'ni yana to'liq qayta ishga tushirib tekshirish: (1) "Your text" o'rniga haqiqiy
+  so'z matni to'g'ri chiqayaptimi, (2) so'z instance'lari mustaqilmi (ustma-ust/bog'liq
+  emas), (3) subtitr/kinetic-text/B-roll **haqiqatan video ustida ko'rinishini**, (4)
+  so'zlar to'g'ri vaqtda, uzluksiz chiqishini, (5) video/boshqa tracklar siljimasligini,
+  (6) subtitr yaratish to'g'ri video faylni aniqlashini.
+- Agar "Your text" muammosi davom etsa — `setMogrtText()`ning qaysi qismida aniq
+  to'xtayotganini (JSON param topilmayaptimi, topiladi-yu lekin render yangilanmayaptimi)
+  aniqlash uchun qo'shimcha diagnostika (masalan vaqtincha alert/log) qo'shish kerak
+  bo'ladi.
+- Agar `New_Animation_01-10.mogrt` ham kerak bo'lsa — strukturasini tekshirib (bitta matn
+  qatlami bilan mosmi yoki boshqacha), keyin qo'shish mumkin.
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish, push qilinmagan).
+
+## 2026-08-05 (davomi 3) — Butun panel dizayni referens skrinshotga moslab qayta qurildi
+
+- Foydalanuvchi tayyor dizayn skrinshotini yuborib, panelni shunga moslab qayta qurishni
+  so'radi. Kelishilgan qarorlar: (1) 20 ta haqiqiy mogrt video-preview'i saqlanadi (rasmdagi
+  statik "SALOM"+strelka ikonkalariga o'tilmadi), (2) panel kengligi ~340px dan **960px**ga
+  oshirildi (`CSXS/manifest.xml`, ikki ustun sig'ishi uchun, tor holatda CSS breakpoint
+  orqali bitta ustunga qaytadi), (3) haqiqiy % progress ma'lumoti yo'qligi sababli progress
+  ring soddalashtirilgan holatda (band=aylanuvchi, tayyor=to'liq halqa+"100%"+belgi).
+- **Bu faqat vizual/frontend qayta qurish — `host/index.jsx` va Java backend'ga hech qanday
+  o'zgarish kiritilmadi**, shuning uchun bu safar **Premiere qayta ishga tushirilishi shart
+  emas** — faqat panel oynasini yopib-qayta ochish kifoya (client fayllar CEP'da har safar
+  qayta yuklanadi, faqat host `.jsx` keshlanadi).
+- **`client/index.html`**: `#main-content` endi `.main-grid` (chap: video/subtitr
+  uslubi/`.settings-card` ichida translate+advanced+kinetic bo'limlari/generate tugmasi,
+  o'ng: `.results-panel` — progress-ring + status + `broll-btn`/`kinetic-btn`) va pastda
+  to'liq-kenglikdagi `.media-library` (B-roll natijalari, joyi o'zgardi, xatti-harakati
+  o'zgarmadi) ga bo'lindi. Barcha mavjud element `id`lari saqlanib qoldi — `main.js`
+  o'zgarishsiz ishlashi kerak bo'lgan joylarda buzilish yo'q. Toggle qatorlariga (tarjima/
+  ko'proq sozlama/kinetic) va B-roll/kinetic tugmalariga kichik SVG ikonkalar qo'shildi.
+- **`client/css/style.css`**: `.main-grid` (CSS grid, `@media max-width:760px`da bitta
+  ustunga qaytadi), `.settings-card`, `.results-panel`/`.progress-ring*` (inline SVG halqa,
+  `.busy`/`.done` holat klasslari), `.kinetic-grid-head`/`.kinetic-search`/
+  `.kinetic-count-badge`, `.kinetic-card-media`/`.kinetic-card-play`/`.kinetic-card-check`
+  (kartaga play-belgi va tanlash-check qo'shildi), `.kinetic-pagination`
+  (sahifa/nuqta/"Barchasini ko'rish"), `.media-library` qo'shildi. `.toggle-row` yangi
+  `.toggle-icon` uchun qayta strukturalandi (`justify-content: space-between` o'rniga
+  `label{flex:1}`).
+- **`client/js/main.js`**: `setStatus(text, kind)` endi `updateProgressRing(kind)`ni ham
+  chaqiradi (busy→aylanuvchi halqa, ok→to'liq halqa+"100%", boshqa→idle) — yagona joydan
+  butun ilova bo'ylab ishlaydi, alohida chaqiruvlar sepilmadi. Kinetic grid butunlay qayta
+  yozildi: `allKineticStyles`/`kineticFiltered`/`kineticPage`/`kineticShowAllFlag` state,
+  `renderKineticGrid()` (6 tadan sahifalaydi, "Barchasini ko'rish" bosilsa scroll qiladigan
+  to'liq ro'yxatga o'tadi), `applyKineticFilter()` (qidiruv input, nom bo'yicha filtr).
+  Video-preview va tanlash logikasi (`buildKineticCard`, `selectKineticCard`,
+  `insertKineticText` chaqiruvi) **o'zgarmadi** — faqat qanday kartalar render qilinishi
+  o'zgardi. "N ta animatsiya" badge haqiqiy sondan to'ldiriladi.
+- `node --check` (main.js) xatosiz o'tdi, `install.bat` bilan qayta o'rnatildi.
+  **Foydalanuvchi tomonidan hali vizual tasdiqlanmagan**.
+
+### Keyingi qadam
+- Panelni Premiere'da yopib-qayta ochib tekshirish: keng holatda ikki ustun to'g'ri
+  chiqishini, tor holatga torraytirilganda bitta ustunga qaytishini, kinetic qidiruv/
+  sahifalash ishlashini, progress-ring band/tayyor holatlarida to'g'ri ko'rinishini,
+  barcha mavjud funksiyalar (Subtitr yaratish, B-roll, Animatsion matn qo'shish,
+  faollashtirish ekrani) avvalgidek ishlashini.
+- Kinetic Typography'ning o'zi (so'z vaqtlari, MOGRT joylashtirish) hali oldingi
+  sessiyada qo'yilgan tuzatishlar (mustaqil nusxalar, uzluksiz davomiylik) bilan
+  to'liq tasdiqlanmagan edi — dizayn testi bilan birga shuni ham qayta tekshirish kerak.
+
+## 2026-08-05 (davomi 4) — Whisper so'z tanish xatosi: medium → large-v3
+
+- Foydalanuvchi "Subtitr yaratish" natijasida so'zlar noto'g'ri chiqayotganini xabar
+  qildi (skrinshot: "bemorlarimiz" o'rniga "dimarlarimiz" — haqiqiy eshitish xatosi, imlo
+  xatosi emas). Birinchi taklifi "Whisper'ni olib tashla, faqat Gemini ishlat" edi, lekin
+  bu kinetic typography uchun kerak bo'lgan **aniq so'z-vaqtlarini yo'qotardi** (Gemini
+  faqat taxminiy/interpolatsiya vaqt beradi — aynan shu sabab bilan avvalgi sessiyada
+  Gemini'dan Whisper'ga o'tilgan edi). Buni tushuntirib, kamroq xavfli yechim taklif
+  qilindi va tanlandi.
+- **Muhim topilma**: `srt_bot/transcriber.py`da allaqachon (oldingi sessiyalarda qurilgan)
+  gibrid yondashuv bor edi — `spelling_correction.py` Whisper natijasidagi so'zlarni
+  Gemini orqali **faqat imlosini tuzatadi** (so'z sonini/tartibini/vaqtini o'zgartirmasdan).
+  Lekin bu **faqat imlo** uchun ishlaydi ("başqa"→"boshqa" kabi) — "dimarlarimiz" kabi
+  **butunlay boshqa eshitilgan so'z**ni tuzata olmaydi (prompt aniq "so'zni almashtirma,
+  faqat imlosini to'g'irla" deb cheklangan — mo'ljallangan tarzda).
+  - Tuzatish: `srt_bot/.env`da `WHISPER_MODEL_SIZE=medium` → **`large-v3`**ga o'zgartirildi
+    (`WHISPER_LANGUAGE=uz` allaqachon to'g'ri sozlangan edi). So'z-vaqt aniqligi saqlanib
+    qoladi, so'zlarni tanish sifati yaxshilanishi kutiladi. **Kamchilik**: CPU'da (`
+    WHISPER_DEVICE=cpu`, `int8`) ishlaydi, shuning uchun generatsiya sezilarli
+    sekinlashadi, birinchi so'rovda model fayli (`large-v3`) hali yuklab olinmagan bo'lsa
+    avtomatik yuklanadi (qo'shimcha kutish).
+  - `srt_bot` python jarayoni to'xtatilib qayta ishga tushirildi (config o'zgarishi kuchga
+    kirishi uchun shart) — litsenziya server javob bermoqda, tasdiqlandi.
+- **Hali sinovdan o'tkazilmagan** — foydalanuvchi haqiqiy video bilan qayta "Subtitr
+  yaratish"ni sinashi kerak (birinchi urinish model yuklanishi sababli sezilarli uzoq
+  davom etishi mumkin, bu normal).
+
+### Keyingi qadam
+- Foydalanuvchi qayta subtitr yaratib, so'zlar to'g'ri chiqayotganini tekshirishi kerak.
+- Agar `large-v3` bilan ham xato davom etsa yoki tezlik muammo bo'lsa: (a) `WHISPER_DEVICE`
+  GPU'ga o'tkazish imkoniyatini ko'rib chiqish, yoki (b) har video uchun `initial_prompt`
+  (domen so'zlar ro'yxati) qo'shishni ko'rib chiqish mumkin.

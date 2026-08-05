@@ -106,7 +106,7 @@ public class TranscribeController {
             Path srtPath = sessionDir.resolve("subtitle.srt");
             Files.writeString(srtPath, srt, StandardCharsets.UTF_8);
 
-            return ResponseEntity.ok(new TranscribeResponse(srtPath.toString(), srt, result.segments()));
+            return ResponseEntity.ok(new TranscribeResponse(srtPath.toString(), srt, result.segments(), result.words()));
         } catch (IOException | RuntimeException e) {
             return serverError(e.getMessage());
         } finally {

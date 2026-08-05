@@ -57,6 +57,9 @@
 
         <div id="main-content" hidden>
 
+        <div class="main-grid">
+        <div class="col-left">
+
         <section class="field">
             <label>Video</label>
             <div class="combo-row">
@@ -85,46 +88,97 @@
             </div>
         </section>
 
-        <section class="toggle-row">
-            <label class="toggle-label" for="translate-toggle">Boshqa tilga tarjima</label>
-            <button type="button" id="translate-toggle" class="toggle" role="switch" aria-checked="false"></button>
-        </section>
+        <div class="settings-card">
+            <p class="settings-card-title">Sozlamalar</p>
 
-        <div id="translate-panel" class="translate-panel" hidden>
-            <select id="translate-lang" class="lang-select">
-                <option value="en">Ingliz tili</option>
-                <option value="ru">Rus tili</option>
-                <option value="tr">Turk tili</option>
-                <option value="kk">Qozoq tili</option>
-                <option value="ar">Arab tili</option>
-                <option value="zh">Xitoy tili</option>
-                <option value="fr">Fransuz tili</option>
-                <option value="de">Nemis tili</option>
-            </select>
-        </div>
+            <section class="toggle-row">
+                <span class="toggle-icon" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.3 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.3-3.8-8.5S9.5 5.8 12 3.5z" stroke="currentColor" stroke-width="1.3"/>
+                    </svg>
+                </span>
+                <label class="toggle-label" for="translate-toggle">Boshqa tilga tarjima</label>
+                <button type="button" id="translate-toggle" class="toggle" role="switch" aria-checked="false"></button>
+            </section>
 
-        <section class="toggle-row">
-            <label class="toggle-label" for="advanced-toggle">Ko'proq sozlama</label>
-            <button type="button" id="advanced-toggle" class="toggle" role="switch" aria-checked="false"></button>
-        </section>
-
-        <div id="advanced-panel" class="advanced-panel" hidden>
-            <div class="slider-field">
-                <div class="slider-head">
-                    <span>Qatorlar soni</span>
-                    <span id="max-lines-badge" class="badge">2</span>
-                </div>
-                <input type="range" id="max-lines-slider" min="1" max="3" step="1" value="2" />
+            <div id="translate-panel" class="translate-panel" hidden>
+                <select id="translate-lang" class="lang-select">
+                    <option value="en">Ingliz tili</option>
+                    <option value="ru">Rus tili</option>
+                    <option value="tr">Turk tili</option>
+                    <option value="kk">Qozoq tili</option>
+                    <option value="ar">Arab tili</option>
+                    <option value="zh">Xitoy tili</option>
+                    <option value="fr">Fransuz tili</option>
+                    <option value="de">Nemis tili</option>
+                </select>
             </div>
-            <div class="slider-field">
-                <div class="slider-head">
-                    <span>Har qatorda so'z</span>
-                    <span id="words-per-line-badge" class="badge">5</span>
+
+            <section class="toggle-row">
+                <span class="toggle-icon" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <circle cx="9" cy="6" r="1.8" fill="currentColor"/>
+                        <circle cx="16" cy="12" r="1.8" fill="currentColor"/>
+                        <circle cx="10" cy="18" r="1.8" fill="currentColor"/>
+                    </svg>
+                </span>
+                <label class="toggle-label" for="advanced-toggle">Ko'proq sozlama</label>
+                <button type="button" id="advanced-toggle" class="toggle" role="switch" aria-checked="false"></button>
+            </section>
+
+            <div id="advanced-panel" class="advanced-panel" hidden>
+                <div class="slider-field">
+                    <div class="slider-head">
+                        <span>Qatorlar soni</span>
+                        <span id="max-lines-badge" class="badge">2</span>
+                    </div>
+                    <input type="range" id="max-lines-slider" min="1" max="3" step="1" value="2" />
                 </div>
-                <input type="range" id="words-per-line-slider" min="1" max="8" step="1" value="5" />
+                <div class="slider-field">
+                    <div class="slider-head">
+                        <span>Har qatorda so'z</span>
+                        <span id="words-per-line-badge" class="badge">5</span>
+                    </div>
+                    <input type="range" id="words-per-line-slider" min="1" max="8" step="1" value="5" />
+                </div>
+                <label class="preview-label">Namuna:</label>
+                <div id="preview-box" class="preview-box"></div>
             </div>
-            <label class="preview-label">Namuna:</label>
-            <div id="preview-box" class="preview-box"></div>
+
+            <section class="toggle-row">
+                <span class="toggle-icon" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 6h16M12 6v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                <label class="toggle-label" for="kinetic-toggle">Kinetic Typography (so'z-so'z animatsiya)</label>
+                <button type="button" id="kinetic-toggle" class="toggle" role="switch" aria-checked="false"></button>
+            </section>
+
+            <div id="kinetic-panel" class="translate-panel" hidden>
+                <div class="kinetic-grid-head">
+                    <span class="kinetic-grid-title">Animatsiya uslubi</span>
+                    <span id="kinetic-count-badge" class="badge kinetic-count-badge">0 ta animatsiya</span>
+                    <input type="text" id="kinetic-search" class="kinetic-search" placeholder="Uslub nomi bo'yicha qidirish..." />
+                </div>
+                <div id="kinetic-grid" class="kinetic-grid"></div>
+                <div id="kinetic-pagination" class="kinetic-pagination" hidden>
+                    <button type="button" id="kinetic-prev" class="kinetic-page-btn" title="Oldingi">‹</button>
+                    <span id="kinetic-page-label" class="kinetic-page-label">1/1</span>
+                    <span id="kinetic-page-dots" class="kinetic-page-dots"></span>
+                    <button type="button" id="kinetic-next" class="kinetic-page-btn" title="Keyingi">›</button>
+                    <button type="button" id="kinetic-show-all" class="kinetic-show-all">Barchasini ko'rish</button>
+                </div>
+                <div class="slider-field">
+                    <div class="slider-head">
+                        <span>Har so'z eng kamida necha soniya ko'rinsin</span>
+                        <span id="kinetic-min-duration-badge" class="badge">0.3s</span>
+                    </div>
+                    <input type="range" id="kinetic-min-duration-slider" min="0.1" max="3.0" step="0.1" value="0.3" />
+                </div>
+            </div>
         </div>
 
         <button id="generate-btn" class="btn primary">
@@ -136,22 +190,59 @@
             <span class="btn-label">Subtitr yaratish</span>
         </button>
 
-        <div id="status" class="status">
-            <span class="status-spinner" aria-hidden="true"></span>
-            <span id="status-text"></span>
         </div>
 
-        <button id="broll-btn" class="btn" hidden>B-roll takliflarini qidirish</button>
-        <div id="broll-filter-bar" class="broll-filter-bar" hidden>
-            <div id="broll-type-tabs" class="broll-type-tabs">
-                <button type="button" class="broll-tab active" data-type="all">Hammasi</button>
-                <button type="button" class="broll-tab" data-type="video">Video</button>
-                <button type="button" class="broll-tab" data-type="photo">Rasm</button>
-                <button type="button" class="broll-tab" data-type="gif">GIF</button>
+        <div class="col-right">
+        <div id="results-panel" class="results-panel idle">
+            <div class="progress-ring-wrap">
+                <svg class="progress-ring" width="92" height="92" viewBox="0 0 96 96">
+                    <g transform="rotate(-90 48 48)">
+                        <circle class="progress-ring-track" cx="48" cy="48" r="42"/>
+                        <circle class="progress-ring-fill" cx="48" cy="48" r="42"/>
+                    </g>
+                </svg>
+                <span id="progress-ring-label" class="progress-ring-label"></span>
             </div>
-            <input type="text" id="broll-search" class="broll-search" placeholder="Kalit so'z bo'yicha qidirish...">
+            <svg id="progress-ring-check" class="progress-ring-check" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M7.5 12.5l3 3 6-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+
+            <div id="status" class="status">
+                <span class="status-spinner" aria-hidden="true"></span>
+                <span id="status-text"></span>
+            </div>
+
+            <button id="broll-btn" class="btn" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="6" width="13" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M16 10.5l5-3v9l-5-3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+                <span>B-roll takliflarini qidirish</span>
+            </button>
+            <button id="kinetic-btn" class="btn" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 6h16M12 6v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <span>Animatsion matn qo'shish</span>
+            </button>
         </div>
-        <div id="broll-list" class="broll-list"></div>
+        </div>
+        </div>
+
+        <div class="media-library">
+            <p class="media-library-title">Media kutubxonasi</p>
+            <div id="broll-filter-bar" class="broll-filter-bar" hidden>
+                <div id="broll-type-tabs" class="broll-type-tabs">
+                    <button type="button" class="broll-tab active" data-type="all">Hammasi</button>
+                    <button type="button" class="broll-tab" data-type="video">Video</button>
+                    <button type="button" class="broll-tab" data-type="photo">Rasm</button>
+                    <button type="button" class="broll-tab" data-type="gif">GIF</button>
+                </div>
+                <input type="text" id="broll-search" class="broll-search" placeholder="Kalit so'z bo'yicha qidirish...">
+            </div>
+            <div id="broll-list" class="broll-list"></div>
+        </div>
 
         </div>
 

@@ -42,6 +42,27 @@ body {
     min-height: calc(100vh - 28px);
 }
 
+/* Two-column layout (left: form, right: results) — collapses to one column when the
+   panel is docked narrow, since CEP panels are user-resizable. */
+
+.main-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 760px) {
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.col-right {
+    position: sticky;
+    top: 0;
+}
+
 /* Header */
 
 .header {
@@ -123,6 +144,29 @@ body {
     font-size: 10.5px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+
+/* Settings card (groups the translate/advanced/kinetic toggle sections) */
+
+.settings-card {
+    padding: 12px;
+    margin-bottom: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.settings-card-title {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-card .toggle-row:last-child,
+.settings-card > div:last-child .toggle-row {
+    margin-bottom: 0;
 }
 
 /* Video / composition row */
@@ -231,11 +275,25 @@ body {
 .toggle-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 10px;
     margin-bottom: 14px;
 }
 
+.toggle-icon {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+}
+
 .toggle-label {
+    flex: 1;
     color: var(--text);
     font-size: 12px;
 }
@@ -439,6 +497,96 @@ input[type="range"]::-moz-range-thumb {
     display: none;
 }
 
+/* Results panel (right column) */
+
+.results-panel {
+    padding: 20px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.progress-ring-wrap {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    margin: 0 auto 12px;
+}
+
+.progress-ring circle {
+    fill: none;
+    stroke-width: 6;
+}
+
+.progress-ring-track {
+    stroke: var(--border);
+}
+
+.progress-ring-fill {
+    stroke: var(--border-strong);
+    stroke-linecap: round;
+    stroke-dasharray: 264;
+    stroke-dashoffset: 264;
+    transition: stroke-dashoffset 0.4s ease, stroke 0.2s ease;
+}
+
+.progress-ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-faint);
+}
+
+.progress-ring-check {
+    display: none;
+    margin: 0 auto 8px;
+    color: var(--success);
+}
+
+.results-panel.busy .progress-ring-fill {
+    stroke: var(--accent);
+    stroke-dasharray: 60 204;
+    stroke-dashoffset: 0;
+    animation: ring-spin 1s linear infinite;
+}
+
+.results-panel.done .progress-ring-fill {
+    stroke: var(--accent);
+    stroke-dashoffset: 0;
+}
+
+.results-panel.done .progress-ring-label {
+    color: var(--text);
+}
+
+.results-panel.done .progress-ring-check {
+    display: block;
+}
+
+@keyframes ring-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.results-panel .status {
+    margin-top: 0;
+    justify-content: center;
+    text-align: left;
+}
+
+.results-panel .btn {
+    margin-top: 10px;
+}
+
 /* Status */
 
 .status {
@@ -498,6 +646,22 @@ input[type="range"]::-moz-range-thumb {
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Media library (B-roll results, full-width below the two-column layout) */
+
+.media-library {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.media-library-title {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 /* B-roll suggestions */
@@ -613,6 +777,219 @@ input[type="range"]::-moz-range-thumb {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
+}
+
+.kinetic-grid-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.kinetic-grid-title {
+    color: var(--text-muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: 0 0 auto;
+}
+
+.kinetic-count-badge {
+    background: var(--success-bg);
+    color: var(--success);
+    flex: 0 0 auto;
+}
+
+.kinetic-search {
+    flex: 1 1 100%;
+    padding: 6px 9px;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 11px;
+    font-family: inherit;
+}
+
+.kinetic-search:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.kinetic-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.kinetic-grid-scroll {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.kinetic-empty {
+    grid-column: 1 / -1;
+    padding: 10px 4px;
+    color: var(--text-faint);
+    font-size: 10.5px;
+    text-align: center;
+}
+
+.kinetic-card {
+    position: relative;
+    padding: 0;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    text-align: left;
+}
+
+.kinetic-card:hover:not(.selected) {
+    border-color: var(--border-strong);
+}
+
+.kinetic-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.kinetic-card-media {
+    position: relative;
+}
+
+.kinetic-card-media video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: #1a1a1a;
+}
+
+.kinetic-card-play {
+    position: absolute;
+    left: 5px;
+    bottom: 5px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    pointer-events: none;
+}
+
+.kinetic-card-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0f1a12;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.kinetic-card.selected .kinetic-card-check {
+    display: flex;
+}
+
+.kinetic-card-label {
+    display: block;
+    padding: 4px 6px;
+    color: var(--text-muted);
+    font-size: 9.5px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.kinetic-card.selected .kinetic-card-label {
+    color: var(--text);
+}
+
+.kinetic-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    font-size: 10.5px;
+}
+
+.kinetic-page-btn {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.kinetic-page-btn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--border-strong);
+}
+
+.kinetic-page-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.kinetic-page-label {
+    flex: 0 0 auto;
+}
+
+.kinetic-page-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    justify-content: center;
+}
+
+.kinetic-page-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--border-strong);
+}
+
+.kinetic-page-dot.active {
+    background: var(--accent);
+}
+
+.kinetic-show-all {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 10.5px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.kinetic-show-all:hover {
+    text-decoration: underline;
 }
 
 .broll-card {

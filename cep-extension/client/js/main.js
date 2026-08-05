@@ -1,6 +1,11 @@
 (function () {
     var csInterface = new CSInterface();
     var API_BASE = 'http://localhost:8971';
+    // ExtendScript's $.fileName doesn't reliably resolve to the host .jsx's own location once
+    // loaded as a CEP host script, so the mogrt assets folder is resolved here instead (the
+    // officially documented way to find the extension's own install folder) and passed into
+    // every kinetic-typography evalScript call.
+    var MOGRT_FOLDER = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/mogrt';
     var PREVIEW_SAMPLE_WORDS = "Bu ajoyib video uchun subtitr namunasi shu tarzda ko'rinadi".split(' ');
 
     var els = {
@@ -27,6 +32,22 @@
         brollTypeTabs: document.getElementById('broll-type-tabs'),
         brollSearch: document.getElementById('broll-search'),
         brollList: document.getElementById('broll-list'),
+        kineticToggle: document.getElementById('kinetic-toggle'),
+        kineticPanel: document.getElementById('kinetic-panel'),
+        kineticGrid: document.getElementById('kinetic-grid'),
+        kineticCountBadge: document.getElementById('kinetic-count-badge'),
+        kineticSearch: document.getElementById('kinetic-search'),
+        kineticPagination: document.getElementById('kinetic-pagination'),
+        kineticPrev: document.getElementById('kinetic-prev'),
+        kineticNext: document.getElementById('kinetic-next'),
+        kineticPageLabel: document.getElementById('kinetic-page-label'),
+        kineticPageDots: document.getElementById('kinetic-page-dots'),
+        kineticShowAll: document.getElementById('kinetic-show-all'),
+        kineticMinDurationSlider: document.getElementById('kinetic-min-duration-slider'),
+        kineticMinDurationBadge: document.getElementById('kinetic-min-duration-badge'),
+        kineticBtn: document.getElementById('kinetic-btn'),
+        resultsPanel: document.getElementById('results-panel'),
+        progressRingLabel: document.getElementById('progress-ring-label'),
         licenseBadge: document.getElementById('license-badge'),
         activationScreen: document.getElementById('activation-screen'),
         mainContent: document.getElementById('main-content'),
@@ -42,8 +63,15 @@
     var selectedSegment = els.styleSegmented.querySelector('.segment-btn.selected');
     var selectedFile = null;
     var lastSegments = null;
+    var lastWords = null;
     var lastBrollSuggestions = [];
     var brollActiveType = 'all';
+    var selectedKineticStyle = null;
+    var allKineticStyles = [];
+    var kineticFiltered = [];
+    var kineticPage = 0;
+    var kineticShowAllFlag = false;
+    var KINETIC_PAGE_SIZE = 6;
 
     segmentButtons.forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -77,6 +105,11 @@
 
     setupToggle(els.translateToggle, els.translatePanel);
     setupToggle(els.advancedToggle, els.advancedPanel);
+    setupToggle(els.kineticToggle, els.kineticPanel);
+
+    els.kineticMinDurationSlider.addEventListener('input', function () {
+        els.kineticMinDurationBadge.textContent = parseFloat(els.kineticMinDurationSlider.value).toFixed(1) + 's';
+    });
 
     function updatePreview() {
         var maxLines = parseInt(els.maxLinesSlider.value, 10);
@@ -113,6 +146,25 @@
     function setStatus(text, kind) {
         els.statusText.textContent = text;
         els.status.className = 'status ' + (kind || '');
+        updateProgressRing(kind);
+    }
+
+    // The progress ring has no real intermediate percentage to show (the backend only reports
+    // done/not-done, not incremental progress), so it's simplified to three visual states: an
+    // indeterminate spin while busy, a full ring + checkmark + "100%" once something succeeds,
+    // and a dim idle ring otherwise — never a fabricated in-between number.
+    function updateProgressRing(kind) {
+        els.resultsPanel.classList.remove('idle', 'busy', 'done');
+        if (kind === 'busy') {
+            els.resultsPanel.classList.add('busy');
+            els.progressRingLabel.textContent = '';
+        } else if (kind === 'ok') {
+            els.resultsPanel.classList.add('done');
+            els.progressRingLabel.textContent = '100%';
+        } else {
+            els.resultsPanel.classList.add('idle');
+            els.progressRingLabel.textContent = '';
+        }
     }
 
     function setBusy(isBusy) {
@@ -121,6 +173,7 @@
         setSegmentButtonsDisabled(isBusy);
         els.translateToggle.disabled = isBusy;
         els.advancedToggle.disabled = isBusy;
+        els.kineticToggle.disabled = isBusy;
     }
 
     function detectActiveMedia(callback) {
@@ -131,11 +184,13 @@
                 els.filePathText.textContent = result.replace(/^ERROR:\s*/, '');
                 els.filePath.className = 'file-card error';
                 els.brollBtn.hidden = true;
+                els.kineticBtn.hidden = true;
             } else {
                 selectedFile = result;
                 els.filePathText.textContent = result;
                 els.filePath.className = 'file-card';
                 els.brollBtn.hidden = false;
+                els.kineticBtn.hidden = false;
             }
             if (callback) {
                 callback();
@@ -147,6 +202,7 @@
         setStatus('Timeline video tekshirilmoqda...', 'busy');
         setBusy(true);
         lastSegments = null;
+        lastWords = null;
         lastBrollSuggestions = [];
         els.brollFilterBar.hidden = true;
         els.brollSearch.value = '';
@@ -192,6 +248,7 @@
             .then(function (body) {
                 setStatus("Subtitr tayyor, loyihaga qo'shilmoqda...", 'busy');
                 lastSegments = body.segments || null;
+                lastWords = body.words || null;
                 importSrt(body.srtPath, selectedFile);
             })
             .catch(function (err) {
@@ -272,6 +329,7 @@
         })
         .then(function (body) {
             lastSegments = body.segments || null;
+            lastWords = body.words || null;
             if (!lastSegments || !lastSegments.length) {
                 throw new Error('Videoda nutq topilmadi.');
             }
@@ -324,6 +382,48 @@
             .finally(function () {
                 els.brollBtn.disabled = false;
                 els.brollBtn.textContent = 'B-roll takliflarini qidirish';
+            });
+        });
+    });
+
+    els.kineticBtn.addEventListener('click', function () {
+        els.kineticBtn.disabled = true;
+
+        transcribeForSegments(function (err) {
+            if (err) {
+                setStatus(err.message || String(err), 'error');
+                els.kineticBtn.disabled = false;
+                return;
+            }
+            if (!lastWords || !lastWords.length) {
+                setStatus("So'z darajasidagi vaqt ma'lumoti topilmadi.", 'error');
+                els.kineticBtn.disabled = false;
+                return;
+            }
+            if (!selectedKineticStyle) {
+                setStatus("Animatsiya shabloni topilmadi (host/assets/mogrt bo'sh).", 'error');
+                els.kineticBtn.disabled = false;
+                return;
+            }
+
+            els.kineticBtn.textContent = "Animatsiya qo'shilmoqda...";
+            setStatus("Animatsion matn qo'shilmoqda...", 'busy');
+
+            var style = selectedKineticStyle;
+            var minDurationSeconds = parseFloat(els.kineticMinDurationSlider.value);
+            var escapedWords = escapeForEval(JSON.stringify(lastWords));
+            var escapedMedia = escapeForEval(selectedFile || '');
+            var escapedFolder = escapeForEval(MOGRT_FOLDER);
+            var script = 'insertKineticText("' + style + '", "' + escapedWords + '", "' + escapedMedia + '", "' +
+                escapedFolder + '", ' + minDurationSeconds + ')';
+            csInterface.evalScript(script, function (result) {
+                els.kineticBtn.disabled = false;
+                els.kineticBtn.textContent = "Animatsion matn qo'shish";
+                if (result && result.indexOf('ERROR:') === 0) {
+                    setStatus(result, 'error');
+                } else {
+                    setStatus(result || 'Bajarildi.', 'ok');
+                }
             });
         });
     });
@@ -596,6 +696,157 @@
         });
     });
 
+    function selectKineticCard(card, name) {
+        selectedKineticStyle = name;
+        Array.prototype.slice.call(els.kineticGrid.querySelectorAll('.kinetic-card')).forEach(function (c) {
+            c.classList.remove('selected');
+        });
+        card.classList.add('selected');
+    }
+
+    function buildKineticCard(name) {
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'kinetic-card' + (name === selectedKineticStyle ? ' selected' : '');
+
+        var media = document.createElement('div');
+        media.className = 'kinetic-card-media';
+
+        // Each .mogrt already ships its own rendered preview (thumb.mp4, extracted once at
+        // build time into assets/kinetic-previews/<name>.mp4) — showing it lets users see how
+        // the animation actually moves before adding it, instead of guessing from a filename.
+        var video = document.createElement('video');
+        video.src = 'assets/kinetic-previews/' + name + '.mp4';
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.addEventListener('error', function () {
+            video.style.display = 'none';
+        });
+        media.appendChild(video);
+
+        var play = document.createElement('span');
+        play.className = 'kinetic-card-play';
+        play.innerHTML = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8V4z"/></svg>';
+        media.appendChild(play);
+
+        var check = document.createElement('span');
+        check.className = 'kinetic-card-check';
+        check.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l5 5L19 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        media.appendChild(check);
+
+        card.appendChild(media);
+
+        var label = document.createElement('span');
+        label.className = 'kinetic-card-label';
+        label.textContent = name.replace(/_/g, ' ');
+        card.appendChild(label);
+
+        card.addEventListener('click', function () {
+            selectKineticCard(card, name);
+        });
+
+        return card;
+    }
+
+    function renderKineticGrid() {
+        els.kineticGrid.innerHTML = '';
+
+        if (!kineticFiltered.length) {
+            var empty = document.createElement('div');
+            empty.className = 'kinetic-empty';
+            empty.textContent = allKineticStyles.length ? 'Mos animatsiya topilmadi.' : 'Shablon topilmadi.';
+            els.kineticGrid.appendChild(empty);
+            els.kineticPagination.hidden = true;
+            return;
+        }
+
+        var needsPaging = kineticFiltered.length > KINETIC_PAGE_SIZE;
+        var totalPages = needsPaging ? Math.ceil(kineticFiltered.length / KINETIC_PAGE_SIZE) : 1;
+        if (kineticPage >= totalPages) {
+            kineticPage = totalPages - 1;
+        }
+
+        var visible = (!needsPaging || kineticShowAllFlag)
+            ? kineticFiltered
+            : kineticFiltered.slice(kineticPage * KINETIC_PAGE_SIZE, kineticPage * KINETIC_PAGE_SIZE + KINETIC_PAGE_SIZE);
+
+        visible.forEach(function (name) {
+            els.kineticGrid.appendChild(buildKineticCard(name));
+        });
+        els.kineticGrid.classList.toggle('kinetic-grid-scroll', needsPaging && kineticShowAllFlag);
+
+        if (!needsPaging) {
+            els.kineticPagination.hidden = true;
+            return;
+        }
+
+        els.kineticPagination.hidden = false;
+        els.kineticPrev.hidden = kineticShowAllFlag;
+        els.kineticNext.hidden = kineticShowAllFlag;
+        els.kineticPageLabel.hidden = kineticShowAllFlag;
+        els.kineticPageDots.style.display = kineticShowAllFlag ? 'none' : 'flex';
+        els.kineticPageLabel.textContent = (kineticPage + 1) + '/' + totalPages;
+        els.kineticPrev.disabled = kineticPage <= 0;
+        els.kineticNext.disabled = kineticPage >= totalPages - 1;
+
+        els.kineticPageDots.innerHTML = '';
+        for (var p = 0; p < totalPages; p++) {
+            var dot = document.createElement('span');
+            dot.className = 'kinetic-page-dot' + (p === kineticPage ? ' active' : '');
+            els.kineticPageDots.appendChild(dot);
+        }
+        els.kineticShowAll.textContent = kineticShowAllFlag ? "Sahifalab ko'rish" : "Barchasini ko'rish";
+    }
+
+    function applyKineticFilter() {
+        var query = els.kineticSearch.value.trim().toLowerCase();
+        kineticFiltered = !query
+            ? allKineticStyles.slice()
+            : allKineticStyles.filter(function (name) {
+                return name.toLowerCase().replace(/_/g, ' ').indexOf(query) !== -1;
+            });
+        kineticPage = 0;
+        renderKineticGrid();
+    }
+
+    els.kineticSearch.addEventListener('input', applyKineticFilter);
+
+    els.kineticPrev.addEventListener('click', function () {
+        kineticPage = Math.max(0, kineticPage - 1);
+        renderKineticGrid();
+    });
+
+    els.kineticNext.addEventListener('click', function () {
+        kineticPage = kineticPage + 1;
+        renderKineticGrid();
+    });
+
+    els.kineticShowAll.addEventListener('click', function () {
+        kineticShowAllFlag = !kineticShowAllFlag;
+        renderKineticGrid();
+    });
+
+    function loadKineticStyles() {
+        var escapedFolder = escapeForEval(MOGRT_FOLDER);
+        csInterface.evalScript('listKineticStyles("' + escapedFolder + '")', function (result) {
+            var names = [];
+            try {
+                names = JSON.parse(result) || [];
+            } catch (e) {
+                names = [];
+            }
+            allKineticStyles = names;
+            els.kineticCountBadge.textContent = names.length + ' ta animatsiya';
+            if (names.length && !selectedKineticStyle) {
+                selectedKineticStyle = names[0];
+            }
+            applyKineticFilter();
+        });
+    }
+
     refreshLicenseStatus();
     detectActiveMedia();
+    loadKineticStyles();
 })();
