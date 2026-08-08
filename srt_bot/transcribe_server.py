@@ -1,7 +1,8 @@
-"""HTTP endpoint the Java backend calls for word-precise transcription (faster-whisper,
-frame-accurate timestamps) instead of Gemini's LLM-estimated + interpolated timing. Runs in
-the same aiohttp app as the license verify server, gated by the same device+token check so
-only activated plugin installs can use it.
+"""HTTP endpoint the Java backend calls for word-precise transcription: Gemini transcribes the
+audio (content is more reliable than Whisper for a low-resource language like Uzbek) and
+Whisper's frame-accurate timestamps are aligned onto Gemini's words (see hybrid_transcriber).
+Runs in the same aiohttp app as the license verify server, gated by the same device+token check
+so only activated plugin installs can use it.
 """
 
 import asyncio
@@ -11,8 +12,8 @@ from pathlib import Path
 
 from aiohttp import web
 
+import hybrid_transcriber
 import licensing
-import transcriber
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,9 @@ async def handle_transcribe(request: web.Request) -> web.Response:
         with tempfile.TemporaryDirectory() as tmp:
             wav_path = Path(tmp) / "audio.wav"
             wav_path.write_bytes(audio_bytes)
-            result = await asyncio.to_thread(transcriber.transcribe, wav_path)
+            result = await asyncio.to_thread(hybrid_transcriber.transcribe, wav_path)
     except Exception:
-        logger.exception("Whisper transcription failed")
+        logger.exception("Hybrid transcription failed")
         return web.json_response({"error": "transcription_failed"}, status=500)
 
     return web.json_response(

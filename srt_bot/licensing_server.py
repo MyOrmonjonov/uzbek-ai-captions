@@ -9,6 +9,8 @@ from aiohttp import web
 
 import config
 import licensing
+import plugin_release
+import proxy_server
 import transcribe_server
 
 # WAV uploads for /transcribe can be tens of MB for longer videos; aiohttp's 1MB default
@@ -41,6 +43,8 @@ def build_app() -> web.Application:
     app.router.add_post("/license/verify", handle_verify)
     app.router.add_get("/license/health", handle_health)
     transcribe_server.register(app)
+    proxy_server.register(app)
+    plugin_release.register(app)
     return app
 
 

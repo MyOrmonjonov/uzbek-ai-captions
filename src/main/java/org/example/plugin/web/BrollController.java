@@ -8,18 +8,13 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import org.example.plugin.model.BrollCandidate;
-import org.example.plugin.model.BrollScene;
 import org.example.plugin.model.BrollSuggestion;
 import org.example.plugin.service.BrollSceneService;
 import org.example.plugin.service.GifConversionService;
-import org.example.plugin.service.GiphyService;
 import org.example.plugin.service.LicenseService;
-import org.example.plugin.service.PexelsService;
 import org.example.plugin.web.dto.BrollDownloadRequest;
 import org.example.plugin.web.dto.BrollDownloadResponse;
 import org.example.plugin.web.dto.BrollSuggestionsRequest;
@@ -34,23 +29,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class BrollController {
 
-    private static final int CANDIDATES_PER_TYPE = 2;
-
     private final BrollSceneService brollSceneService;
-    private final PexelsService pexelsService;
-    private final GiphyService giphyService;
     private final GifConversionService gifConversionService;
     private final LicenseService licenseService;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
-    public BrollController(BrollSceneService brollSceneService, PexelsService pexelsService,
-                            GiphyService giphyService, GifConversionService gifConversionService,
+    public BrollController(BrollSceneService brollSceneService, GifConversionService gifConversionService,
                             LicenseService licenseService) {
         this.brollSceneService = brollSceneService;
-        this.pexelsService = pexelsService;
-        this.giphyService = giphyService;
         this.gifConversionService = gifConversionService;
         this.licenseService = licenseService;
     }
@@ -67,37 +55,11 @@ public class BrollController {
         }
 
         try {
-            List<BrollScene> scenes = brollSceneService.groupIntoScenes(request.segments());
-            List<BrollSuggestion> suggestions = scenes.stream()
-                    .map(scene -> {
-                        List<BrollCandidate> candidates = pickCandidates(scene.keyword());
-                        return candidates.isEmpty() ? null
-                                : new BrollSuggestion(scene.start(), scene.end(), scene.keyword(), candidates);
-                    })
-                    .filter(s -> s != null)
-                    .toList();
+            List<BrollSuggestion> suggestions = brollSceneService.fetchSuggestions(request.segments());
             return ResponseEntity.ok(new BrollSuggestionsResponse(suggestions));
         } catch (RuntimeException e) {
             return serverError(e.getMessage());
         }
-    }
-
-    /**
-     * Each type is fetched and capped independently (not a shared total) so that, whenever a
-     * type has matches at all, the panel's per-type grid gets a full 2 candidates to lay out as
-     * two columns — a shared/interleaved total would usually leave each type with just 1,
-     * making the "2 ustunli grid" collapse to a single column in practice.
-     */
-    private List<BrollCandidate> pickCandidates(String keyword) {
-        List<BrollCandidate> videos = pexelsService.searchVideos(keyword, CANDIDATES_PER_TYPE);
-        List<BrollCandidate> photos = pexelsService.searchPhotos(keyword, CANDIDATES_PER_TYPE);
-        List<BrollCandidate> gifs = giphyService.searchGifs(keyword, CANDIDATES_PER_TYPE);
-
-        List<BrollCandidate> result = new ArrayList<>();
-        result.addAll(videos);
-        result.addAll(photos);
-        result.addAll(gifs);
-        return result;
     }
 
     @PostMapping("/api/broll-download")

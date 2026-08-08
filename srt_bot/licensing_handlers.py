@@ -23,7 +23,12 @@ import licensing
 logger = logging.getLogger(__name__)
 router = Router()
 
-DEVICE_CODE_RE = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
+# (?i) is embedded in the pattern text itself (not passed as a separate re.compile flag)
+# because the router filter below reads DEVICE_CODE_RE.pattern (the raw string) and
+# recompiles it fresh, which would otherwise silently drop a flag set only on this object —
+# without it, a user who hand-types their device code in lowercase (instead of using the
+# panel's copy button) gets no response at all, since the filter simply never matches.
+DEVICE_CODE_RE = re.compile(r"(?i)^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
 
 
 def _is_admin(user_id: int) -> bool:

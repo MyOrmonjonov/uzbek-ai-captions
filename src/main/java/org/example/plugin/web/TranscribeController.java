@@ -1,32 +1,31 @@
 package org.example.plugin.web;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-import org.example.plugin.model.TranscriptionResult;
-import org.example.plugin.service.AudioExtractionService;
 import org.example.plugin.service.GeminiTranscriptionService;
 import org.example.plugin.service.LicenseService;
-import org.example.plugin.service.SrtBuilderService;
-import org.example.plugin.service.WhisperTranscriptionService;
+import org.example.plugin.service.TranscriptionJobService;
 import org.example.plugin.web.dto.ErrorResponse;
+import org.example.plugin.web.dto.TranscribeJobStatus;
 import org.example.plugin.web.dto.TranscribeRequest;
-import org.example.plugin.web.dto.TranscribeResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * "Subtitr yaratish" now runs as a background job (see TranscriptionJobService) instead of one
+ * long blocking request — POST starts the job and returns immediately, GET polls its progress.
+ * Neither Whisper nor Gemini expose real fine-grained progress, so the panel gets a time-based
+ * estimate during the "transcribing" stage rather than something truly instrumented; this still
+ * turns one long static spinner into visible, moving progress, which was the actual ask.
+ */
 @RestController
 public class TranscribeController {
-
-    private static final Logger LOG = Logger.getLogger(TranscribeController.class.getName());
 
     private static final int MIN_LINES = 1;
     private static final int MAX_LINES = 3;
@@ -35,21 +34,11 @@ public class TranscribeController {
     private static final int DEFAULT_MAX_LINES = 2;
     private static final int DEFAULT_WORDS_PER_LINE = 4;
 
-    private final AudioExtractionService audioExtractionService;
-    private final GeminiTranscriptionService geminiTranscriptionService;
-    private final WhisperTranscriptionService whisperTranscriptionService;
-    private final SrtBuilderService srtBuilderService;
+    private final TranscriptionJobService jobService;
     private final LicenseService licenseService;
 
-    public TranscribeController(AudioExtractionService audioExtractionService,
-                                 GeminiTranscriptionService geminiTranscriptionService,
-                                 WhisperTranscriptionService whisperTranscriptionService,
-                                 SrtBuilderService srtBuilderService,
-                                 LicenseService licenseService) {
-        this.audioExtractionService = audioExtractionService;
-        this.geminiTranscriptionService = geminiTranscriptionService;
-        this.whisperTranscriptionService = whisperTranscriptionService;
-        this.srtBuilderService = srtBuilderService;
+    public TranscribeController(TranscriptionJobService jobService, LicenseService licenseService) {
+        this.jobService = jobService;
         this.licenseService = licenseService;
     }
 
@@ -84,67 +73,20 @@ public class TranscribeController {
             return badRequest("Fayl topilmadi: " + request.filePath());
         }
 
-        Path sessionDir;
-        try {
-            Path baseDir = Path.of(System.getProperty("java.io.tmpdir"), "uzbek-ai-captions");
-            Files.createDirectories(baseDir);
-            sessionDir = Files.createDirectory(baseDir.resolve(UUID.randomUUID().toString()));
-        } catch (IOException e) {
-            return serverError("Vaqtinchalik papka yaratib bo'lmadi: " + e.getMessage());
-        }
-
-        Path wavPath = sessionDir.resolve("audio.wav");
-        try {
-            audioExtractionService.extractAudio(sourcePath, wavPath);
-
-            TranscriptionResult result = transcribeWordAccurate(wavPath, translateTo);
-            if (result.words().isEmpty() && result.segments().isEmpty()) {
-                return badRequest("Nutq aniqlanmadi. Boshqa fayl bilan urinib ko'ring.");
-            }
-
-            String srt = srtBuilderService.buildSrt(result, maxLines, wordsPerLine);
-            Path srtPath = sessionDir.resolve("subtitle.srt");
-            Files.writeString(srtPath, srt, StandardCharsets.UTF_8);
-
-            return ResponseEntity.ok(new TranscribeResponse(srtPath.toString(), srt, result.segments(), result.words()));
-        } catch (IOException | RuntimeException e) {
-            return serverError(e.getMessage());
-        } finally {
-            try {
-                Files.deleteIfExists(wavPath);
-            } catch (IOException ignored) {
-                // best-effort cleanup
-            }
-        }
+        String jobId = jobService.submit(sourcePath, maxLines, wordsPerLine, translateTo);
+        return ResponseEntity.ok(new JobIdResponse(jobId));
     }
 
-    /**
-     * Whisper gives real, frame-accurate per-word timestamps and is used whenever no
-     * translation is requested. Translation still needs Gemini (Whisper's built-in
-     * "translate" task only goes X-to-English, not to our 8 target languages) — in that case
-     * word timing falls back to Gemini's segment-estimate + interpolation, same as before.
-     * If the Whisper server is unreachable, we fall back to Gemini too rather than failing
-     * the whole generation outright.
-     */
-    private TranscriptionResult transcribeWordAccurate(Path wavPath, String translateTo) {
-        if (translateTo != null && !translateTo.isBlank()) {
-            return geminiTranscriptionService.transcribe(wavPath, translateTo);
-        }
-        try {
-            return whisperTranscriptionService.transcribe(wavPath);
-        } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Whisper transcription failed, falling back to Gemini", e);
-            return geminiTranscriptionService.transcribe(wavPath, null);
-        }
+    @GetMapping("/api/transcribe/status/{jobId}")
+    public ResponseEntity<TranscribeJobStatus> status(@PathVariable String jobId) {
+        return ResponseEntity.ok(jobService.status(jobId));
+    }
+
+    private record JobIdResponse(String jobId) {
     }
 
     private ResponseEntity<ErrorResponse> badRequest(String message) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(message));
-    }
-
-    private ResponseEntity<ErrorResponse> serverError(String message) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse(message != null ? message : "Noma'lum xatolik"));
     }
 
     static ResponseEntity<ErrorResponse> licenseRequired(LicenseService.Status status) {

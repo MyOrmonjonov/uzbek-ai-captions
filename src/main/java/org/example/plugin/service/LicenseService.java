@@ -68,7 +68,7 @@ public class LicenseService {
         }
 
         try {
-            Status fresh = callVerify(identityService.getDeviceCode(), token);
+            Status fresh = callVerifyWithRetry(identityService.getDeviceCode(), token);
             cached = new CachedStatus(fresh, now);
             return fresh;
         } catch (IOException | InterruptedException e) {
@@ -88,7 +88,7 @@ public class LicenseService {
             return new Status(false, 0, "missing_token");
         }
         try {
-            Status result = callVerify(identityService.getDeviceCode(), token.trim());
+            Status result = callVerifyWithRetry(identityService.getDeviceCode(), token.trim());
             if (result.valid()) {
                 identityService.saveToken(token.trim());
                 cached = new CachedStatus(result, System.currentTimeMillis());
@@ -100,6 +100,26 @@ public class LicenseService {
             }
             return new Status(false, 0, "network_error");
         }
+    }
+
+    /**
+     * A single momentary blip (DNS hiccup, brief connection reset) shouldn't immediately
+     * surface as "can't reach the license server" to the user — retry a couple of times
+     * before giving up.
+     */
+    private Status callVerifyWithRetry(String deviceCode, String token) throws IOException, InterruptedException {
+        IOException lastError = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return callVerify(deviceCode, token);
+            } catch (IOException e) {
+                lastError = e;
+                if (attempt < 3) {
+                    Thread.sleep(500L * attempt);
+                }
+            }
+        }
+        throw lastError;
     }
 
     private Status callVerify(String deviceCode, String token) throws IOException, InterruptedException {

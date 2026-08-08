@@ -1,4 +1,3 @@
-import textwrap
 from dataclasses import dataclass, field
 
 from transcriber import TranscriptionResult, Word
@@ -103,17 +102,6 @@ def pack_words(
     return cues
 
 
-def wrap_text(text: str, max_lines: int, max_chars_per_line: int) -> list[str]:
-    lines = textwrap.wrap(text, width=max_chars_per_line, break_long_words=False, break_on_hyphens=False)
-    if not lines:
-        return []
-    if len(lines) > max_lines:
-        head = lines[: max_lines - 1]
-        tail = " ".join(lines[max_lines - 1 :])
-        lines = head + [tail]
-    return lines
-
-
 def _fix_overlaps(cues: list[Cue]) -> list[Cue]:
     for i in range(len(cues) - 1):
         next_start = cues[i + 1].start
@@ -134,11 +122,18 @@ def render_srt(cues: list[Cue]) -> str:
 
 def build_srt(result: TranscriptionResult, style: str) -> str:
     if style == "premium":
-        cues = []
-        for seg in result.segments:
-            lines = wrap_text(seg.text, PREMIUM_MAX_LINES, PREMIUM_MAX_CHARS_PER_LINE)
-            if lines:
-                cues.append(Cue(start=seg.start, end=seg.end, lines=lines))
+        # Used to wrap each Gemini segment's full text into PREMIUM_MAX_LINES directly (AI's
+        # own grouping) — but a segment covering a long stretch of continuous speech (no big
+        # enough pause for Gemini to break it) produced one cue holding all of that text
+        # crammed into 2 lines (everything past line 1 joined into one giant run-on line),
+        # displayed statically for the segment's whole duration — reported as "too much text
+        # in one cue" and "falls behind" the audio. Routing through the same word-level
+        # pack_words() used by the other styles caps both line count *and* cue duration, so a
+        # long stretch becomes several properly-timed cues instead of one overstuffed one.
+        cues = pack_words(
+            result.words, max_lines=PREMIUM_MAX_LINES, max_chars_per_line=PREMIUM_MAX_CHARS_PER_LINE,
+            max_cue_duration=5.0,
+        )
     else:
         cues = pack_words(result.words, **STYLE_PARAMS[style])
 

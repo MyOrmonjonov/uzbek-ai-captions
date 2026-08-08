@@ -6,6 +6,64 @@
     // officially documented way to find the extension's own install folder) and passed into
     // every kinetic-typography evalScript call.
     var MOGRT_FOLDER = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/mogrt';
+    var EXPORT_PRESET_PATH = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/export-presets/audio_wav_mono_16k.epr';
+
+    // Node integration (manifest.xml has --enable-nodejs) — used for sequence-audio export
+    // (temp file paths) and the auto-update mechanism further down.
+    var nodeFs, nodePath, nodeOs, nodeHttps;
+    try {
+        nodeFs = require('fs');
+        nodePath = require('path');
+        nodeOs = require('os');
+        nodeHttps = require('https');
+    } catch (e) {
+        // Unexpected (manifest declares --enable-nodejs), but fail soft: sequence-audio export
+        // and auto-update both degrade gracefully without Node rather than breaking the panel.
+    }
+
+    /**
+     * Exports the active sequence's audio via Premiere's own render pipeline
+     * (exportActiveSequenceAudio() in host/index.jsx) instead of transcribing the raw source
+     * file — the resulting WAV already starts at the sequence's own time zero, so callers no
+     * longer need to compute where a source clip sits on the timeline (see
+     * findSourceTimeZeroOffset() in host/index.jsx, the repeated source of offset bugs across
+     * several past sessions). Returns a Promise resolving to the exported WAV's path.
+     */
+    function exportSequenceAudioForTranscribe() {
+        return new Promise(function (resolve, reject) {
+            if (!nodeFs || !nodePath || !nodeOs) {
+                reject(new Error("Node integratsiyasi mavjud emas."));
+                return;
+            }
+            var outputPath = nodePath.join(nodeOs.tmpdir(), 'uzbek-ai-captions-seqaudio-' + Date.now() + '.wav');
+            var escapedOut = escapeForEval(outputPath);
+            var escapedPreset = escapeForEval(EXPORT_PRESET_PATH);
+            csInterface.evalScript(
+                'exportActiveSequenceAudio("' + escapedOut + '", "' + escapedPreset + '")',
+                function (result) {
+                    if (!result || result.indexOf('ERROR:') === 0) {
+                        reject(new Error((result || '').replace(/^ERROR:\s*/, '') || "Audio eksport qilib bo'lmadi."));
+                        return;
+                    }
+                    resolve(result);
+                }
+            );
+        });
+    }
+
+    // Placing MOGRT clips into the Premiere project (insertKineticText/insertCaptionMogrt) has
+    // real per-word/per-cue cost with no way to make it instant — this at least turns a long
+    // silent wait into visible progress, dispatched from the host script via CSXSEvent.
+    var MOGRT_PROGRESS_LABEL = { kinetic: "Animatsiya", caption: "Subtitr" };
+    csInterface.addEventListener('com.uzbekaicaptions.mogrtProgress', function (event) {
+        try {
+            var data = JSON.parse(event.data);
+            var label = MOGRT_PROGRESS_LABEL[data.kind] || "Amal";
+            setStatus(label + " qo'shilmoqda... " + data.done + "/" + data.total, 'busy');
+        } catch (e) {
+            // malformed/unexpected progress event — not worth surfacing to the user
+        }
+    });
     var PREVIEW_SAMPLE_WORDS = "Bu ajoyib video uchun subtitr namunasi shu tarzda ko'rinadi".split(' ');
 
     var els = {
@@ -57,6 +115,10 @@
         activateBtn: document.getElementById('activate-btn'),
         activationStatus: document.getElementById('activation-status'),
         activationStatusText: document.getElementById('activation-status-text'),
+        updateBanner: document.getElementById('update-banner'),
+        updateBannerText: document.getElementById('update-banner-text'),
+        updateBannerBtn: document.getElementById('update-banner-btn'),
+        updateBannerDismiss: document.getElementById('update-banner-dismiss'),
     };
 
     var segmentButtons = Array.prototype.slice.call(els.styleSegmented.querySelectorAll('.segment-btn'));
@@ -198,6 +260,55 @@
         });
     }
 
+    var TRANSCRIBE_STAGE_LABELS = {
+        audio: 'Audio tayyorlanmoqda',
+        transcribing: 'Matnga aylantirilmoqda',
+        building: 'Subtitr tuzilmoqda',
+    };
+
+    // Backend now runs "Subtitr yaratish" as a background job (POST returns a jobId
+    // immediately) instead of one long blocking request — this polls its status every 800ms
+    // and reports a live stage + percentage instead of one static "busy" spinner for however
+    // long Whisper/Gemini take. Returns a Promise resolving to the final TranscribeResponse.
+    function startTranscribeJob(requestBody) {
+        return fetch(API_BASE + '/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+        })
+        .then(function (res) {
+            return res.json().then(function (body) {
+                if (!res.ok) {
+                    throw new Error(body.error || ('Server xatoligi: ' + res.status));
+                }
+                return body;
+            });
+        })
+        .then(function (body) {
+            return new Promise(function (resolve, reject) {
+                function poll() {
+                    fetch(API_BASE + '/api/transcribe/status/' + body.jobId)
+                        .then(function (res) { return res.json(); })
+                        .then(function (job) {
+                            if (job.status === 'error') {
+                                reject(new Error(job.error || 'Xatolik yuz berdi.'));
+                                return;
+                            }
+                            if (job.status === 'done') {
+                                resolve(job.result);
+                                return;
+                            }
+                            var label = TRANSCRIBE_STAGE_LABELS[job.stage] || 'Ishlanmoqda';
+                            setStatus(label + '... ' + (job.progressPercent || 0) + '%', 'busy');
+                            setTimeout(poll, 800);
+                        })
+                        .catch(reject);
+                }
+                poll();
+            });
+        });
+    }
+
     els.generateBtn.addEventListener('click', function () {
         setStatus('Timeline video tekshirilmoqda...', 'busy');
         setBusy(true);
@@ -215,7 +326,7 @@
                 return;
             }
 
-            setStatus("Subtitr yaratilmoqda... (bir necha o'n soniya)", 'busy');
+            setStatus('Sequence audiosi eksport qilinmoqda...', 'busy');
 
             var advancedOn = els.advancedToggle.getAttribute('aria-checked') === 'true';
             var maxLines = advancedOn
@@ -226,36 +337,35 @@
                 : parseInt(selectedSegment.dataset.wordsPerLine, 10);
             var translateOn = els.translateToggle.getAttribute('aria-checked') === 'true';
             var translateTo = translateOn ? els.translateLang.value : null;
+            var exportedWavPath = null;
 
-            fetch(API_BASE + '/api/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filePath: selectedFile,
+            exportSequenceAudioForTranscribe()
+            .then(function (wavPath) {
+                exportedWavPath = wavPath;
+                return startTranscribeJob({
+                    filePath: wavPath,
                     maxLines: maxLines,
                     wordsPerLine: wordsPerLine,
                     translateTo: translateTo,
-                }),
-            })
-            .then(function (res) {
-                return res.json().then(function (body) {
-                    if (!res.ok) {
-                        throw new Error(body.error || ('Server xatoligi: ' + res.status));
-                    }
-                    return body;
                 });
             })
             .then(function (body) {
                 setStatus("Subtitr tayyor, loyihaga qo'shilmoqda...", 'busy');
                 lastSegments = body.segments || null;
                 lastWords = body.words || null;
-                importSrt(body.srtPath, selectedFile);
+                // Empty sourceMediaPath: the audio came from exportSequenceAudioForTranscribe(),
+                // which already starts at the sequence's own time zero, so no offset lookup is
+                // needed (see exportActiveSequenceAudio() in host/index.jsx).
+                importSrt(body.srtPath, '');
             })
             .catch(function (err) {
                 setStatus(err.message || String(err), 'error');
             })
             .finally(function () {
                 setBusy(false);
+                if (exportedWavPath && nodeFs) {
+                    try { nodeFs.unlinkSync(exportedWavPath); } catch (e) { /* best-effort cleanup */ }
+                }
             });
         });
     });
@@ -263,7 +373,8 @@
     function importSrt(srtPath, sourceMediaPath) {
         var escapedSrt = escapeForEval(srtPath);
         var escapedMedia = escapeForEval(sourceMediaPath || '');
-        csInterface.evalScript('importSrt("' + escapedSrt + '", "' + escapedMedia + '")', function (result) {
+        var escapedFolder = escapeForEval(MOGRT_FOLDER);
+        csInterface.evalScript('importSrt("' + escapedSrt + '", "' + escapedMedia + '", "' + escapedFolder + '")', function (result) {
             if (result && result.indexOf('ERROR:') === 0) {
                 setStatus(result, 'error');
             } else {
@@ -297,7 +408,7 @@
             return;
         }
 
-        setStatus('Video tahlil qilinmoqda...', 'busy');
+        setStatus('Sequence audiosi eksport qilinmoqda...', 'busy');
 
         var advancedOn = els.advancedToggle.getAttribute('aria-checked') === 'true';
         var maxLines = advancedOn
@@ -308,23 +419,16 @@
             : parseInt(selectedSegment.dataset.wordsPerLine, 10);
         var translateOn = els.translateToggle.getAttribute('aria-checked') === 'true';
         var translateTo = translateOn ? els.translateLang.value : null;
+        var exportedWavPath = null;
 
-        fetch(API_BASE + '/api/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                filePath: selectedFile,
+        exportSequenceAudioForTranscribe()
+        .then(function (wavPath) {
+            exportedWavPath = wavPath;
+            return startTranscribeJob({
+                filePath: wavPath,
                 maxLines: maxLines,
                 wordsPerLine: wordsPerLine,
                 translateTo: translateTo,
-            }),
-        })
-        .then(function (res) {
-            return res.json().then(function (body) {
-                if (!res.ok) {
-                    throw new Error(body.error || ('Server xatoligi: ' + res.status));
-                }
-                return body;
             });
         })
         .then(function (body) {
@@ -337,6 +441,11 @@
         })
         .catch(function (err) {
             callback(err);
+        })
+        .finally(function () {
+            if (exportedWavPath && nodeFs) {
+                try { nodeFs.unlinkSync(exportedWavPath); } catch (e) { /* best-effort cleanup */ }
+            }
         });
     }
 
@@ -412,7 +521,10 @@
             var style = selectedKineticStyle;
             var minDurationSeconds = parseFloat(els.kineticMinDurationSlider.value);
             var escapedWords = escapeForEval(JSON.stringify(lastWords));
-            var escapedMedia = escapeForEval(selectedFile || '');
+            // Empty sourceMediaPath: lastWords came from exportSequenceAudioForTranscribe()'s
+            // sequence-exported audio, which already starts at the sequence's own time zero —
+            // no offset lookup needed (see exportActiveSequenceAudio() in host/index.jsx).
+            var escapedMedia = escapeForEval('');
             var escapedFolder = escapeForEval(MOGRT_FOLDER);
             var script = 'insertKineticText("' + style + '", "' + escapedWords + '", "' + escapedMedia + '", "' +
                 escapedFolder + '", ' + minDurationSeconds + ')';
@@ -608,6 +720,7 @@
         expired: "Obuna muddati tugagan. Botdan yangi token oling.",
         revoked: 'Litsenziya bekor qilingan. Admin bilan bog\'laning.',
         network_error: "Litsenziya serveriga ulanib bo'lmadi. Internetni tekshiring.",
+        backend_unreachable: "Backend serverga ulanib bo'lmadi. run-server.bat ishga tushirilganini tekshiring.",
         device_mismatch: "Token noto'g'ri yoki boshqa qurilmaga tegishli.",
         not_found: "Token topilmadi. Qaytadan tekshiring.",
         missing_token: 'Tokenni kiriting.',
@@ -623,7 +736,8 @@
         els.mainContent.hidden = true;
         els.licenseBadge.hidden = true;
         els.deviceCodeText.textContent = deviceCode || '...';
-        setActivationStatus(REASON_TEXT[reason] || 'Faollashtirish kerak.', reason === 'network_error' ? 'error' : '');
+        var isErrorReason = reason === 'network_error' || reason === 'backend_unreachable';
+        setActivationStatus(REASON_TEXT[reason] || 'Faollashtirish kerak.', isErrorReason ? 'error' : '');
     }
 
     function showMainContent(daysLeft) {
@@ -648,7 +762,13 @@
                 }
             })
             .catch(function () {
-                showActivationScreen(null, 'network_error');
+                // Bu yerdagi fetch lokal backend'ga (API_BASE) boradi, AWS litsenziya
+                // serveriga emas — shuning uchun bu yerdagi muvaffaqiyatsizlik odatda
+                // "run-server.bat ishga tushmagan" degani, "internet yo'q" emas.
+                // Java backend'ning o'zi AWS'ga ulana olmasa, body.reason='network_error'
+                // .then() shoxobchasida keladi (bu yerga tushmaydi) — shu reason bilan
+                // yuqoridagi xabar to'g'ri qoladi.
+                showActivationScreen(null, 'backend_unreachable');
             });
     }
 
@@ -845,6 +965,247 @@
             applyKineticFilter();
         });
     }
+
+    // ════════════════ Avtomatik yangilanish ════════════════
+    // Ikki bosqichli: hozir yuklanadi va tekshiriladi, o'rnatish esa keyingi Premiere
+    // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
+    // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
+    // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
+    var PLUGIN_VERSION = '1.3.9';
+    var UPDATE_HOST = 'aitilmoch.duckdns.org';
+    var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
+    // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
+    // exportSequenceAudioForTranscribe()).
+
+    function isNewerVersion(latest, current) {
+        if (!latest || !current) return false;
+        var a = String(latest).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+        var b = String(current).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+        for (var i = 0; i < Math.max(a.length, b.length); i++) {
+            var av = a[i] || 0, bv = b[i] || 0;
+            if (av > bv) return true;
+            if (av < bv) return false;
+        }
+        return false;
+    }
+
+    // Staged outside %APPDATA%\Adobe\CEP\extensions\ (via os.tmpdir(), not a sibling of
+    // EXT_DIR) deliberately: CEP scans every subfolder of extensions\ for a CSXS/manifest.xml
+    // and lists each as its own panel entry. A staged copy (a full package copy, complete
+    // manifest included) sitting inside extensions\ got discovered as a second, ghost
+    // "Uzbek AI Captions" panel — Premiere's workspace remembered it as an open panel, then
+    // failed with ERR_FILE_NOT_FOUND once the staging dir was cleaned up. Living in the temp
+    // dir instead means CEP never sees it as an extension at all.
+    var UPD = {
+        stageDir: function () { return nodePath.join(nodeOs.tmpdir(), '.uzbek-ai-captions-pending'); },
+        backupDir: function () { return nodePath.join(nodeOs.tmpdir(), '.uzbek-ai-captions-backup'); },
+        markerFile: function () { return nodePath.join(UPD.stageDir(), 'READY'); },
+    };
+
+    function rmrf(p) {
+        try {
+            if (nodeFs.existsSync(p)) nodeFs.rmSync(p, { recursive: true, force: true });
+        } catch (e) {
+            try {
+                require('child_process').execSync(
+                    process.platform.indexOf('win') === 0 ? 'rmdir /s /q "' + p + '"' : 'rm -rf "' + p + '"');
+            } catch (e2) { /* best-effort cleanup */ }
+        }
+    }
+
+    function copyDir(src, dst) {
+        if (nodeFs.cpSync) { nodeFs.cpSync(src, dst, { recursive: true }); return; }
+        nodeFs.mkdirSync(dst, { recursive: true });
+        nodeFs.readdirSync(src).forEach(function (name) {
+            var s = nodePath.join(src, name), d = nodePath.join(dst, name);
+            if (nodeFs.statSync(s).isDirectory()) copyDir(s, d); else nodeFs.copyFileSync(s, d);
+        });
+    }
+
+    function downloadFile(url, dest) {
+        return new Promise(function (resolve, reject) {
+            var file = nodeFs.createWriteStream(dest);
+            nodeHttps.get(url, { headers: { 'User-Agent': 'UzbekAiCaptions/' + PLUGIN_VERSION } }, function (res) {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    file.close();
+                    downloadFile(res.headers.location, dest).then(resolve, reject);
+                    return;
+                }
+                if (res.statusCode !== 200) {
+                    file.close();
+                    reject(new Error('Yuklab bo\'lmadi (' + res.statusCode + ')'));
+                    return;
+                }
+                res.pipe(file);
+                file.on('finish', function () { file.close(function () { resolve(dest); }); });
+            }).on('error', function () { file.close(); reject(new Error('Internetni tekshiring.')); });
+        });
+    }
+
+    function unzipTo(zipPath, destDir) {
+        var cp = require('child_process');
+        nodeFs.mkdirSync(destDir, { recursive: true });
+        if (process.platform.indexOf('win') === 0) {
+            cp.execSync('powershell -NoProfile -Command "Expand-Archive -LiteralPath \'' +
+                zipPath + '\' -DestinationPath \'' + destDir + '\' -Force"', { windowsHide: true });
+        } else {
+            cp.execSync('unzip -q -o "' + zipPath + '" -d "' + destDir + '"');
+        }
+    }
+
+    // Yuklangan paket haqiqatan to'liq va yangimi — o'rnatishdan OLDIN tekshiramiz, yarim
+    // yuklangan paketni qo'yish plaginni butunlay ishdan chiqarishi mumkin.
+    function verifyPackage(dir, expectedVersion) {
+        var required = ['client/index.html', 'CSXS/manifest.xml', 'client/js/main.js',
+            'client/js/CSInterface.js', 'host/index.jsx', 'client/css/style.css'];
+        for (var i = 0; i < required.length; i++) {
+            var p = nodePath.join(dir, required[i]);
+            if (!nodeFs.existsSync(p) || nodeFs.statSync(p).size < 10) {
+                return { ok: false, reason: 'fayl yetishmayapti: ' + required[i] };
+            }
+        }
+        var manifest = nodeFs.readFileSync(nodePath.join(dir, 'CSXS/manifest.xml'), 'utf8');
+        var m = manifest.match(/ExtensionBundleVersion="([^"]+)"/);
+        if (!m) return { ok: false, reason: 'manifestda versiya yo\'q' };
+        if (expectedVersion && m[1] !== expectedVersion) {
+            return { ok: false, reason: 'versiya mos emas: ' + m[1] + ' != ' + expectedVersion };
+        }
+        if (!isNewerVersion(m[1], PLUGIN_VERSION)) {
+            return { ok: false, reason: 'yangi emas: ' + m[1] };
+        }
+        return { ok: true, version: m[1] };
+    }
+
+    function stageUpdate(expectedVersion) {
+        var os = require('os');
+        var tmpDir = os.tmpdir();
+        var zipPath = nodePath.join(tmpDir, 'uzbek-ai-captions-update-' + Date.now() + '.zip');
+        var unzipped = nodePath.join(tmpDir, 'uzbek-ai-captions-unzip-' + Date.now());
+        var stage = UPD.stageDir();
+
+        return downloadFile('https://' + UPDATE_HOST + '/plugin/download', zipPath).then(function () {
+            unzipTo(zipPath, unzipped);
+
+            var src = nodePath.join(unzipped, 'uzbek-ai-captions');
+            if (!nodeFs.existsSync(src)) {
+                var inside = nodeFs.readdirSync(unzipped)
+                    .map(function (n) { return nodePath.join(unzipped, n); })
+                    .filter(function (p) { try { return nodeFs.statSync(p).isDirectory(); } catch (e) { return false; } });
+                src = inside.find(function (p) { return nodeFs.existsSync(nodePath.join(p, 'CSXS', 'manifest.xml')); }) || '';
+                if (!src) throw new Error('Paket ichida plugin topilmadi.');
+            }
+
+            var check = verifyPackage(src, expectedVersion);
+            if (!check.ok) throw new Error('Paket yaroqsiz — ' + check.reason);
+
+            rmrf(stage);
+            copyDir(src, stage);
+            nodeFs.writeFileSync(UPD.markerFile(), check.version, 'utf8');
+            return check.version;
+        }).finally(function () {
+            try { nodeFs.unlinkSync(zipPath); } catch (e) {}
+            rmrf(unzipped);
+        });
+    }
+
+    // Ishga tushganda: oldingi seansda tayyorlab qo'yilgan yangilanish bo'lsa — shu yerda
+    // o'rnatiladi. Fayllar Premiere ochilishida bir marta o'qiladi, shuning uchun o'rnatilgan
+    // versiya keyingi ochilishda kuchga kiradi.
+    function applyPendingUpdate() {
+        if (!nodeFs) return null;
+        var stage = UPD.stageDir();
+        var backup = UPD.backupDir();
+        try {
+            if (!nodeFs.existsSync(UPD.markerFile())) return null;
+            var staged = verifyPackage(stage, '');
+            if (!staged.ok) { rmrf(stage); return null; }
+
+            rmrf(backup);
+            copyDir(EXT_DIR, backup);
+            try {
+                copyDir(stage, EXT_DIR);
+                var check = verifyPackage(EXT_DIR, staged.version);
+                if (!check.ok) throw new Error(check.reason);
+            } catch (e) {
+                copyDir(backup, EXT_DIR);
+                rmrf(stage);
+                return { error: String((e && e.message) || e) };
+            }
+            rmrf(stage);
+            rmrf(backup);
+            return { version: staged.version };
+        } catch (e) {
+            return { error: String((e && e.message) || e) };
+        }
+    }
+
+    var pendingUpdateVersion = '';
+
+    function showUpdateBanner(version) {
+        els.updateBannerText.textContent = "Yangi versiya (" + version + ") mavjud";
+        els.updateBanner.hidden = false;
+        pendingUpdateVersion = version;
+    }
+
+    els.updateBannerDismiss.addEventListener('click', function () {
+        els.updateBanner.hidden = true;
+    });
+
+    els.updateBannerBtn.addEventListener('click', function () {
+        // Panel ochilgandan beri boshqa yo'l bilan (masalan install.bat) allaqachon shu
+        // versiyaga yangilangan bo'lishi mumkin — bunday holda foydalanuvchiga "xato"
+        // ko'rsatish o'rniga bannerni jimgina yashiramiz.
+        if (!isNewerVersion(pendingUpdateVersion, PLUGIN_VERSION)) {
+            els.updateBanner.hidden = true;
+            return;
+        }
+        els.updateBannerBtn.disabled = true;
+        els.updateBannerBtn.textContent = 'Yuklanmoqda...';
+        stageUpdate(pendingUpdateVersion).then(function (version) {
+            els.updateBannerText.textContent = "Yuklandi (" + version + ") — Premiere'ni yopib qayta oching.";
+            els.updateBannerBtn.hidden = true;
+        }).catch(function (e) {
+            els.updateBannerBtn.disabled = false;
+            els.updateBannerBtn.textContent = 'Yangilash';
+            var msg = e.message || String(e);
+            if (msg.indexOf('yangi emas') !== -1) {
+                els.updateBannerText.textContent = 'Allaqachon eng oxirgi versiyadasiz.';
+                els.updateBannerBtn.hidden = true;
+            } else {
+                els.updateBannerText.textContent = 'Yangilab bo\'lmadi: ' + msg;
+            }
+        });
+    });
+
+    function checkForUpdate() {
+        if (!nodeHttps) return;
+        try {
+            nodeHttps.get({
+                hostname: UPDATE_HOST, path: '/plugin/version',
+                headers: { 'User-Agent': 'UzbekAiCaptions/' + PLUGIN_VERSION },
+                timeout: 8000,
+            }, function (res) {
+                var chunks = [];
+                res.on('data', function (c) { chunks.push(c); });
+                res.on('end', function () {
+                    try {
+                        var data = JSON.parse(Buffer.concat(chunks).toString());
+                        if (data.latestVersion && isNewerVersion(data.latestVersion, PLUGIN_VERSION)) {
+                            showUpdateBanner(data.latestVersion);
+                        }
+                    } catch (e) { /* malformed response — skip silently, not critical */ }
+                });
+            }).on('error', function () { /* offline or server down — skip silently */ });
+        } catch (e) { /* not critical to panel function */ }
+    }
+
+    (function bootUpdate() {
+        var applied = applyPendingUpdate();
+        if (applied && applied.version) {
+            setStatus("Yangilandi — " + applied.version + ". Yangi imkoniyatlar Premiere qayta ochilganda faol bo'ladi.", 'ok');
+        }
+        checkForUpdate();
+    })();
 
     refreshLicenseStatus();
     detectActiveMedia();

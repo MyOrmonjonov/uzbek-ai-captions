@@ -574,3 +574,815 @@ Bu fayl har bir sessiyada nima qilinganini va oxirgi holatni yozib borish uchun.
 - Agar `large-v3` bilan ham xato davom etsa yoki tezlik muammo bo'lsa: (a) `WHISPER_DEVICE`
   GPU'ga o'tkazish imkoniyatini ko'rib chiqish, yoki (b) har video uchun `initial_prompt`
   (domen so'zlar ro'yxati) qo'shishni ko'rib chiqish mumkin.
+
+## 2026-08-06 — Hybrid transkripsiya: matn Gemini'dan, vaqt Whisper'dan (alignment)
+
+- Foydalanuvchi yana so'z tanish xatosini ko'rsatdi (masalan "bemorlarimiz" o'rniga
+  "dimarlarimiz" — `large-v3`ga o'tilgandan keyin ham) va o'zi taklif qildi: subtitr matnini
+  Gemini'da qilib, vaqtini boshqa (Whisper) bilan to'g'irlash mumkinmi. Bu taklif tasdiqlandi
+  va amalga oshirildi — foydalanuvchiga narxi (ikkala servis ham har safar ishlaydi, biroz
+  sekinroq) tushuntirilgach "hybrid alignment" varianti tanlandi.
+- **Sabab**: eski `spelling_correction.py` (Whisper so'zini Gemini'ga faqat matn sifatida
+  ko'rsatib, imlosini tuzatish) audio'ni EMAS, faqat matnni ko'radi — shuning uchun
+  butunlay noto'g'ri eshitilgan so'zni (imlo xatosi emas, tanish xatosi) tuzata olmasdi.
+- **Yangi arxitektura**: yangi `srt_bot/hybrid_transcriber.py` — Whisper (`transcriber.py`,
+  aniq vaqt) va Gemini (`gemini_transcriber.py`, audio orqali to'g'ridan-to'g'ri, aniqroq
+  matn) bir xil audio ustida **parallel** (`ThreadPoolExecutor`) ishga tushiriladi, so'ng
+  `difflib.SequenceMatcher` orqali Gemini so'zlari Whisper so'zlariga normalizatsiya qilingan
+  holda (kichik harf, tinish belgilarisiz) moslashtiriladi: mos kelgan so'zlar Whisper'ning
+  **haqiqiy** vaqtini oladi, mos kelmagan (Gemini qo'shgan/almashtirgan yoki Whisper
+  eshitmagan/xato eshitgan) so'zlar qo'shni mos so'zlar vaqti orasida harf-uzunligi bo'yicha
+  interpolatsiya qilinadi (xuddi `gemini_transcriber._interpolate_words` kabi, lekin haqiqiy
+  langar nuqtalar orasida). Segmentlar ham Gemini segment chegaralari bo'yicha, lekin yangi
+  moslashtirilgan so'z vaqtlaridan qayta hisoblanadi (`_rebuild_segments`).
+  - `transcribe_server.py`dagi `/transcribe` endpoint (Java `WhisperTranscriptionService`
+    shu yerga so'rov yuboradi) endi `transcriber.transcribe` o'rniga
+    `hybrid_transcriber.transcribe` chaqiradi — **Java tomonida hech qanday o'zgarish shart
+    emas**, chunki javob shakli (`{words, segments}`) bir xil qoldi.
+- **Sinovdan o'tkazildi (audio'siz, sof algoritm darajasida)**: soxta so'z ro'yxati bilan
+  (Whisper: "dimarlarimiz" xato eshitgan, "yaxshi" so'zini butunlay tushirib qoldirgan;
+  Gemini: to'g'ri "bemorlarimiz ... yaxshi ...") — natija to'g'ri chiqdi: to'g'ri tanilgan
+  so'zlar (`bugun`, `kasalxonada`, `davolanmoqda`) haqiqiy Whisper vaqtini oldi, xato
+  eshitilgan/qo'shilgan so'zlar (`bemorlarimiz`, `yaxshi`) qo'shni langar vaqtlar orasida
+  to'g'ri interpolatsiya qilindi. `py_compile` xatosiz o'tdi.
+- Bot va backend qayta ishga tushirildi (`srt_bot\bot.py`, `run-server.bat`) — ikkalasi ham
+  hozir ishlab turibdi.
+- **Hali sinovdan o'tkazilmagan — haqiqiy audio bilan**: foydalanuvchi Premiere'da real video
+  bilan "Subtitr yaratish"ni sinashi kerak. E'tibor beriladigan narsalar: (1) so'zlar endi
+  to'g'ri tanilyaptimi (Gemini matni), (2) vaqt hamon aniqmi (Whisper langar + interpolatsiya
+  buzmadimi), (3) generatsiya vaqti qanchalik sekinlashdi (ikkala servis parallel ishlagani
+  uchun umid — sof Whisper vaqtidan unchalik uzoq bo'lmasligi kerak, lekin Gemini audio
+  yuklash+javob vaqti qo'shiladi).
+- **Diqqat**: `spelling_correction.py` hamon Whisper yo'lida ishlaydi (Whisper so'zlarini
+  alignment uchun standart imloga keltiradi — bu Gemini so'zlari bilan moslashish
+  ehtimolini oshiradi), o'chirilmadi.
+
+### Keyingi qadam
+- Foydalanuvchi haqiqiy video bilan sinab, natijani (so'z aniqligi + vaqt aniqligi +
+  generatsiya tezligi) tasdiqlashi kerak.
+- Agar alignment ba'zi hollarda noto'g'ri ishlasa (masalan Gemini so'z tartibini juda
+  o'zgartirsa yoki umuman boshqacha gapirsa) — `difflib` normalizatsiya funksiyasini
+  (`_normalize`) yoki interpolatsiya chegaralarini qayta ko'rib chiqish kerak bo'lishi mumkin.
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish).
+
+## 2026-08-06 (davomi) — Kinetic typography: "so'z erta kesilib ketyapti" bugi + "Your text" diagnostikasi
+
+- Foydalanuvchi Premiere'da kinetic typography'ni sinab, ikkita muammo xabar qildi: (1) "Your
+  text" namunaviy matni hamon ba'zan chiqib qolyapti (avvalgi ikki tuzatishdan keyin ham), (2)
+  tez gapirilgan joylarda so'z oxirigacha to'liq chiqmay, keyingi so'zga erta o'tib ketyapti —
+  o'qib ulgurish qiyin.
+- **Sabab #2 (asosiy, tasdiqlangan mantiqiy tahlil bilan)**: barcha so'z kliplari **bitta**
+  overlay track'ga qo'yilardi. `minDurationSeconds` (o'qish uchun minimal ko'rinish vaqti) —
+  tez gapirilganda so'zlar orasidagi haqiqiy bo'shliqdan (`holdUntil - word.start`) katta
+  bo'lib qolishi mumkin edi, bu holda hisoblangan `duration` keyingi so'z allaqachon
+  boshlangan vaqtga "kirib" ketardi — bitta trekda ikkita so'z klipi vaqt bo'yicha ustma-ust
+  tushardi. Bu **importMGT() orqali navbatdagi so'z joylashtirilganda oldingi klipni erta
+  kesib/almashtirib qo'yishi** bilan natijalangan — aynan foydalanuvchi ta'riflagan holat.
+  - Tuzatildi: `host/index.jsx`da `insertKineticText()` endi bitta qattiq trek o'rniga
+    **greedy interval-scheduling** orqali dinamik trek pool ishlatadi (`pickTrack()`) — har
+    so'z faqat o'sha vaqtga kelib **bo'sh qolgan** trekka qo'yiladi, bo'sh trek topilmasa
+    yangisi (`addOverlayTrack()`) qo'shiladi. Natijada tez gapirilgan joylarda so'zlar zarur
+    bo'lganda alohida qatlamlarda vizual ustma-ust chiqadi (hech biri kesilmaydi/yo'qolmaydi),
+    sekin gapirilgan joylarda esa hamon bitta trek yetarli bo'ladi (qo'shimcha trek ochilmaydi).
+    Natija xabarida endi nechta qatlam ishlatilgani ko'rsatiladi (agar 1 dan ko'p bo'lsa).
+  - **Diqqat**: haqiqiy animatsiya tezligini o'zgartirish (ExtendScript'da hech qanday rasmiy
+    yo'l yo'q, avvalgi sessiyada tasdiqlangan) hamon mumkin emas — bu tuzatish faqat
+    **kesilib qolish bugini** bartaraf etadi, animatsiyaning o'zi hamon bir xil tezlikda
+    o'ynaydi, faqat endi kerak bo'lganda bir necha so'z vizual bir vaqtda ko'rinishi mumkin.
+- **"Your text" — ildizi hali aniqlanmagan**: ikki marta (oldingi sessiyalarda) turli
+  taxminlar bilan "tuzatilgan" bo'lsa-da, muammo davom etyapti — demak taxminlar noto'g'ri
+  yoki yetarli emas edi. Real Premiere muhitida debugger ulab bo'lmasligi sababli, endi
+  `setMogrtText()`dan keyin **faqat 1-so'z uchun** yangi `setMogrtTextDiagnostic()` chaqiriladi
+  — bu property'ni **qayta o'qib**, nechta "textEditValue" shaklidagi parametr topilgani va
+  yozuvdan keyin o'sha parametr **haqiqatan qanday qiymat qaytarayotgani**ni natija xabariga
+  qo'shadi (masalan: "diagnostika: 1-so'zda 2 ta matn-parametr, o'qilgan: [Your text | Your
+  text], kutilgan: \"salom\""). Bu ikki gipotezani ajratib beradi: (a) agar o'qilgan qiymat
+  hamon "Your text" bo'lsa — yozuvning o'zi umuman ta'sir qilmayapti (`setValue()` chaqiruvi
+  yoki JSON shakli noto'g'ri), (b) agar o'qilgan qiymat to'g'ri chiqsa-yu vizual render hamon
+  "Your text" ko'rsatsa — muammo yozuvda emas, balki **render yangilanmasligida** (masalan
+  playhead/frame refresh kerak). Keyingi tuzatish shu diagnostika natijasiga qarab qilinadi.
+- `node --check` (vaqtinchalik `.js` nusxa orqali, `.jsx` kengaytmasini node tanimaydi) va
+  `install.bat` orqali qayta o'rnatish xatosiz o'tdi. Bot (`bot.py`) va backend
+  (`run-server.bat`) qayta ishga tushirilgan holda ishlab turibdi.
+- **Hali sinovdan o'tkazilmagan**: Premiere to'liq qayta ishga tushirilishi kerak (host `.jsx`
+  keshlanadi), so'ng foydalanuvchi yana "Animatsion matn qo'shish"ni sinab: (1) tez
+  gapirilgan joylarda so'zlar endi kesilmasdan to'liq ko'rinayaptimi (ehtiyot: endi ba'zan
+  bir necha so'z bir lahzada ustma-ust ko'rinishi **kutilgan/normal** xatti-harakat, xato
+  emas), (2) natija xabaridagi diagnostika satrini o'qib yuborishi kerak — shu orqali "Your
+  text" muammosining aniq sababi (yozuv ishlamayaptimi yoki render yangilanmayaptimi)
+  tasdiqlanadi.
+
+### Keyingi qadam
+- Foydalanuvchidan diagnostika xabarini olib, "Your text" muammosining haqiqiy sababini
+  aniqlash va shunga qarab yakuniy tuzatishni qilish.
+- Trek-scheduling tuzatishini tasdiqlash: so'zlar endi erta kesilmayaptimi.
+- Ishlagach: git'da commit qilish.
+
+## 2026-08-06 (davomi 2) — Subtitr MOGRT'ga o'tkazildi + "regenerate, stack emas" tuzatildi
+
+- Foydalanuvchi yana bug xabar qildi: "1 qator" tanlansa ham subtitr 2 qatorga bo'lib
+  chiqyapti. Tekshirildi (rasmiy manba + Adobe community orqali): hozirgi
+  `importSrtPremiere()` yo'li SRT faylni Premiere'ning **native Captions** formatiga import
+  qiladi — bu format matnni **o'zi** o'raydi (bizning SRT'dagi qator sonini e'tiborsiz
+  qoldirib) va **Adobe rasman tasdiqlagan**: native caption uslubini (shrift/rang/fon)
+  ExtendScript orqali dasturiy boshqarishning **hech qanday yo'li yo'q** (UXP'ga
+  o'tilmaguncha). Foydalanuvchi alohida savol sifatida "caption ilovalari kabi shrift/rang/
+  fon tanlash imkoni bo'lsa optimal bo'lармиди" deb so'ragan edi — ikkalasi bitta sababga
+  borib taqaladi.
+  - Foydalanuvchiga ikki variant taklif qilindi (AskUserQuestion): (1) kinetic typography'dagi
+    kabi MOGRT-asosiga o'tish — qator sonini aniq nazorat qiladi, kelajakda stil tanlash
+    imkonini ochadi, lekin ko'proq ish; (2) hozirgi native caption bilan davom etish. **MOGRT
+    variant tanlandi.**
+  - **Amalga oshirildi**: yangi `insertCaptionMogrt(style, srtPath, sourceMediaPath,
+    mogrtFolder)` (`host/index.jsx`) — `insertKineticText()`ga o'xshab, lekin **so'z emas,
+    har SRT cue** uchun bitta MOGRT nusxasi qo'yadi (mavjud `parseSrt()` orqali .srt fayldan
+    cue ro'yxati olinadi — backend o'zgarishi shart emas edi). Xuddi kinetic'dagidek: har cue
+    o'z jismoniy MOGRT nusxasini oladi (mustaqillik uchun), greedy trek-scheduling (`pickTrack`)
+    ishlatiladi (odatda 1 trek yetarli, chunki `SrtBuilderService.fixOverlaps()` cue'lar
+    orasida bo'shliqni allaqachon kafolatlaydi), davomiylik `cue.end - cue.start`ga
+    qisqartiriladi (native uzunlikdan oshib ketmasdan, xuddi so'z kliplaridagidek).
+  - **Diqqat — hozircha vaqtinchalik cheklov**: hozirgi 20 ta MOGRT shablon (`assets/mogrt/`)
+    yakka **so'z** uchun mo'ljallangan qisqa animatsiyalar (README: "~0.15-0.4s"), to'liq
+    ko'p qatorli gap uchun mo'ljallanmagan. Shuning uchun default sifatida eng "neytral"
+    (`Plain_fade_on`, `DEFAULT_CAPTION_STYLE`) tanlandi — vizual mos kelishi **hali
+    tasdiqlanmagan**, ko'rinishi yomon bo'lsa alohida subtitr-uchun MOGRT shabloni
+    tayyorlash/qidirish kerak bo'ladi.
+  - `importSrt()` dispatcher endi (Premiere uchun) `mogrtFolder` argumenti berilsa
+    `insertCaptionMogrt`ni chaqiradi; `main.js`dagi `importSrt()` client funksiyasi endi
+    `MOGRT_FOLDER`ni ham uzatadi. Eski `importSrtPremiere()` (native caption) hali kodda
+    qoladi, lekin asosiy oqimdan chaqirilmaydi.
+- **Ikkinchi so'rov**: foydalanuvchi "animatsiya yaratilgandan keyin ro'yxatdagi boshqa
+  stil bilan almashtirib ko'ra olish" va "davomiylikni video ko'rib turib moslashtirish"
+  imkoni bo'lishi kerakligini aytdi. Tekshirilganda: `lastWords`/`lastSegments` panelda
+  allaqachon keshlangan (qayta transkripsiya kerak emas), UI tugmasi ham har safar qayta
+  bosilaveradi — lekin **har bosilganda eski MOGRT kliplari o'chirilmasdan, ustiga yangisi
+  qo'shilardi** (stack, almashtirish emas) — bu shu so'rovni bloklardi.
+  - Tuzatildi: rasmiy, hujjatlashtirilgan `TrackItem.remove(inRipple, inAlignToVideo)` API
+    (Premiere 13.1+) topildi va ishlatildi. `index.jsx`da modul darajasidagi
+    `lastKineticClips`/`lastKineticTrackIndices` va `lastCaptionClips`/
+    `lastCaptionTrackIndices` — har `insertKineticText()`/`insertCaptionMogrt()` chaqiruvi
+    endi **avval** o'zi oldingi safar qo'ygan barcha kliplarni tozalaydi
+    (`clearTrackedClips()`), so'ng **bo'shagan** eski treklarni qayta ishlatadi (yangi
+    bo'sh trek ochilmaydi, garchi kerak bo'lsa qo'shiladi). Natijada: foydalanuvchi stil yoki
+    "eng kam davomiylik" slaydilarni o'zgartirib, tugmani qayta bossa — eskisi o'chib,
+    yangisi o'sha joyga qo'yiladi (stack emas, almashtirish). Bu ham kinetic, ham (endi
+    MOGRT-asosidagi) subtitr uchun ishlaydi.
+- `node --check` va `install.bat` xatosiz o'tdi. Bot/backend ishlab turibdi.
+- **Hali sinovdan o'tkazilmagan**: Premiere to'liq qayta ishga tushirilishi kerak. Tekshirish
+  kerak: (1) subtitr endi to'g'ri qator sonida chiqayaptimi va vizual qanday ko'rinadi
+  (`Plain_fade_on` uzun gaplar uchun mos keladimi), (2) stil/slayder o'zgartirib qayta
+  bosilganda eski animatsiya to'g'ri o'chib, yangisi to'g'ri joyga qo'yilyaptimi (duplikat
+  yo'qmi).
+
+### Keyingi qadam
+- Foydalanuvchi vizual tasdiqlashi kerak: subtitr MOGRT ko'rinishi (matn sig'yaptimi,
+  qator sonini to'g'ri), qayta-generatsiya (regenerate) to'g'ri almashtirayotgani.
+- Agar `Plain_fade_on` ko'p qatorli matn uchun yomon ko'rinsa — subtitrga maxsus
+  (kattaroq matn qutili, orqa fon bilan) MOGRT shablon(lar)i kerak bo'ladi; shundan keyin
+  "Your text" diagnostikasi ham hali kutilmoqda.
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish).
+
+## 2026-08-06 (davomi 3) — Katta harf (ALL CAPS) bugi tuzatildi
+
+- Foydalanuvchi xabar qildi: kinetic typography so'zlari doim **katta harflarda** chiqyapti
+  (kutilmagan, biz matnni asl holicha yuboryapmiz). `.mogrt` fayllarni to'g'ridan-to'g'ri
+  tekshirib (ular aslida zip — `definition.json` ochib ko'rildi): sabab topildi —
+  `Plain_fade_on.mogrt`da (va ehtimol qolgan 19 tasida ham, xuddi shu shablon oilasidan)
+  matn parametrining o'zida (`capParams[0]`) `textEditValue` bilan bir qatorda
+  `"fontFSAllCapsValue": [true]` bor edi — bu AE'ning "All Caps" belgi uslubi, matn
+  KONTENTIGA emas, alohida stil bayrog'iga tegishli, shuning uchun `textEditValue`ni
+  to'g'ri yuborsak ham render doim katta harfda chiqaverardi.
+  - Tuzatildi: `setMogrtText()` (`host/index.jsx`, kinetic va subtitr MOGRT ikkalasida ham
+    ishlatiladi) endi xuddi shu obyektda `fontFSAllCapsValue` kaliti bor bo'lsa, uni
+    `[false]`ga o'rnatadi (kalit yo'q shablonlarga tegmaydi). `node --check` va
+    `install.bat` xatosiz o'tdi.
+- **Hali sinovdan o'tkazilmagan** haqiqiy Premiere'da — Premiere qayta ishga tushirilishi
+  kerak.
+- Foydalanuvchi ikkinchi savol berdi: tez gapirilgan joylarda animatsiya "juda tez o'tib
+  ketyapti", nima qilsak bo'ladi. Javob (kodga tegilmadi, tushuntirish berildi): haqiqiy
+  animatsiya **tezligini** o'zgartirishning ExtendScript'da hech qanday yo'li yo'q
+  (avval tasdiqlangan cheklov). Yagona dastak — panelda allaqachon bor "Har so'z eng
+  kamida necha soniya ko'rinsin" slayderi (`kinetic-min-duration-slider`, 0.1–3.0s) — buni
+  oshirish, endi trek-kolliziya tuzatilgani va regenerate-not-stack ishlagani sababli,
+  video ko'rib turib sinab ko'rish tavsiya qilindi (kod o'zgarishi shart emas, foydalanuvchi
+  hali sinamagan). Agar bu yetarli bo'lmasa, keyingi qadam — tez gapirilgan joylarda bir
+  nechta so'zni bitta "burst"ga guruhlash (kod o'zgarishi talab qiladi, hali muhokama
+  qilinmadi/qaror qilinmadi).
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'ni qayta ishga tushirib: (1) so'zlar endi to'g'ri holatda (katta
+  harf emas) chiqayotganini, (2) "eng kam davomiylik" slayderini oshirib tez gapirilgan
+  joylarda animatsiya qanchalik yaxshi his qilinishini tekshirishi kerak.
+- Agar slayder yetarli bo'lmasa — so'zlarni tez gapirilgan joylarda guruhlash imkoniyatini
+  muhokama qilish kerak bo'ladi.
+
+## 2026-08-06 (davomi 4) — Progress-indikator + kinetic sync-drift tuzatildi
+
+- Foydalanuvchi: stil almashtirish uchun har safar Premiere'ga real qo'yish (kutish)
+  kerakligidan noroziligini bildirdi ("telefondagi caption ilovalarida darhol bo'ladi").
+  Tushuntirildi: bu haqiqiy texnik chegara (`importMGT()` har so'z uchun Premiere'ning o'z
+  operatsiyasi, tezlashtirib bo'lmaydi) — ikkita variant taklif qilindi, **progress-
+  indikator** tanlandi.
+  - Amalga oshirildi: `host/index.jsx`da `dispatchProgress(kind, done, total)` — CEP'ning
+    rasmiy `CSXSEvent`/`PlugPlugExternalObject` mexanizmi orqali (web qidiruv bilan
+    tasdiqlangan API) har so'z/cue qo'yilgandan keyin panelga hodisa yuboradi.
+    `insertKineticText()` va `insertCaptionMogrt()`ning ikkalasi ham chaqiradi.
+    `main.js`da `csInterface.addEventListener('com.uzbekaicaptions.mogrtProgress', ...)` —
+    statusni "Animatsiya qo'shilmoqda... 42/128" kabi jonli yangilaydi. `node --check` va
+    `install.bat` xatosiz o'tdi.
+- **Yangi, jiddiyroq bug**: foydalanuvchi subtitr (oddiy, cue-darajasida) vaqti to'g'ri, lekin
+  kinetic (so'z-darajasida) ba'zan oldinga, ba'zan orqaga siljib chiqishini xabar qildi.
+  Tahlil: ikkalasi ham bir xil `words` massividan foydalanadi, shuning uchun **tasodifiy
+  yo'nalishdagi** (ba'zan oldinga, ba'zan orqaga) siljish placement kodidagi bug emas — bu
+  bugungi ertalabki `hybrid_transcriber.py` alignment sifatiga borib taqaladi: Gemini so'zi
+  Whisper so'ziga **aniq** (normalizatsiyadan keyin ham) mos kelmasa (masalan imlo biroz
+  boshqacha), `_align_words()` uni "replace" blokga tashlab, faqat **interpolatsiya**
+  (taxmin) qilar edi. Butun gap/cue darajasida bu sezilmaydi (quti baribir ekranda turadi),
+  lekin bitta so'z alohida chiqib-kirganda taxminiy vaqt darhol sezilarli bo'ladi.
+  - Tuzatildi: `_align_words()`ga ikkinchi, **fuzzy** moslashtirish qatlami qo'shildi —
+    "replace" blok ichida (odatda bir xil so'z, faqat boshqacha yozilgan/imlo) har Gemini
+    so'zi ishlatilmagan Whisper so'zlari orasidan `difflib` belgi-o'xshashligi (ratio) bo'yicha
+    eng яqinini qidiradi (`_FUZZY_MATCH_THRESHOLD = 0.5`), topilsa **haqiqiy** Whisper vaqtini
+    oladi (interpolatsiya emas). Butunlay boshqa so'z (past o'xshashlik) hamon avvalgidek
+    interpolatsiya qilinadi — o'zgarmadi.
+  - **Sinovdan o'tkazildi (audio'siz)**: yaqin imlo farqi ("kasalxonasida"/"kasalxonada") —
+    endi to'g'ri Whisper vaqtini oldi; butunlay boshqa so'z ("mashina"/"bemorlar") — hamon
+    interpolatsiya qilindi (kutilganidek, o'zgarmadi). `py_compile` xatosiz o'tdi.
+  - Bot to'xtatilib qayta ishga tushirildi (config/kod o'zgarishi kuchga kirishi uchun shart).
+- Foydalanuvchi yana bir, hali **noaniq** so'rov qildi: tez gapirilgan joylarda animatsiya
+  vaqti "o'ta kam" bo'lishi (yoki hatto qo'yilmasligi) kerakmi — bu avvalgi so'rovlardagi
+  "minDurationSeconds oshirib o'qishga qulay qilish" bilan zid ko'rinishi mumkin.
+  **Aniqlashtirilmadi, keyingi safar so'rash kerak.**
+- **Hali sinovdan o'tkazilmagan**: foydalanuvchi Premiere'da qayta sinab: (1) progress
+  ko'rinayaptimi, (2) kinetic so'zlar endi audio bilan aniqroq sinxronmi (ayniqsa avval
+  siljigan joylarda).
+
+### Keyingi qadam
+- Foydalanuvchidan tasdiqlash kerak: kinetic sync yaxshilandimi (real video bilan).
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish, ancha to'plandi).
+
+## 2026-08-06 (davomi 5) — Tez gapirilgan joylarda kinetic animatsiya o'tkazib yuboriladi
+
+- Oldingi ziddiyatli so'rov aniqlashtirildi (AskUserQuestion): foydalanuvchi **"tez joylarda
+  animatsiya umuman qo'yilmasin"** variantini tanladi (floor'ni pasaytirish yoki tabiiy
+  tezlikda qoldirish emas).
+- Amalga oshirildi: `host/index.jsx`da yangi `FAST_SKIP_SLOT_SECONDS = 0.22` konstantasi —
+  `insertKineticText()` endi har so'z uchun "slot" (keyingi so'z boshlangunча qancha vaqti
+  bor) ni oldindan hisoblab, shundan kam bo'lsa (0.22s dan kam) — o'sha so'zga umuman MOGRT
+  qo'ymaydi (`skippedFast` hisoblagichi bilan o'tkazib yuboriladi), faqat progress hodisasini
+  yuboradi. Oddiy subtitr (agar mavjud bo'lsa) o'zgarishsiz qoladi — u alohida overlay.
+  - Agar **barcha** so'zlar tez bo'lib o'tkazib yuborilsa, endi "ERROR" emas, tushunarli xabar
+    qaytariladi ("Butun matn juda tez gapirilgani uchun ... animatsiyasiz qoldirildi").
+    Aks holda natija xabarida "N ta so'z tez gapirilgani uchun animatsiyasiz qoldirildi"
+    eslatmasi chiqadi.
+- `node --check` va `install.bat` xatosiz o'tdi.
+- **Hali sinovdan o'tkazilmagan**: Premiere'da haqiqiy tez gapirilgan video bilan sinash
+  kerak — chegara qiymati (0.22s) hozircha taxminiy, real ko'rinishga qarab sozlash kerak
+  bo'lishi mumkin (juda ko'p so'z o'tkazib yuborilsa — pasaytirish, hamon tez tuyulsa —
+  oshirish).
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'da tekshirishi kerak: (1) progress-indikator, (2) kinetic sync
+  yaxshilanishi, (3) tez gapirilgan joylarda animatsiya to'g'ri o'tkazib yuborilishi va
+  0.22s chegarasi mos keladimi.
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish, ancha to'plandi).
+
+## 2026-08-06 (davomi 6) — Oddiy subtitr uchun standart stil o'zgartirildi
+
+- Foydalanuvchi oddiy "Subtitr yaratish"da animatsiya (fade) butunlay bo'lmasligini xohladi.
+  Tekshirildi: 20 ta MOGRT'ning hech birida animatsiya davomiyligi alohida sozlanadigan
+  parametr sifatida ochilmagan (faqat matn/katta-harf bor) va klip tezligini o'zgartirishning
+  ExtendScript'da yo'li yo'q — ya'ni fade'ni dasturiy tezlashtirib bo'lmaydi. Ikki variant
+  taklif qilindi (native caption'ga qaytish vs MOGRT'da qolib eng qisqasini tanlash) — **MOGRT
+  variant, qo'lda tanlash** orqali davom etildi.
+  - Foydalanuvchi preview kartalardan ko'rib, **`Plain_word_down`**ni tanladi.
+  - `DEFAULT_CAPTION_STYLE` (`host/index.jsx`, `insertCaptionMogrt()` standart stili)
+    `Plain_fade_on` dan `Plain_word_down`ga o'zgartirildi. `node --check` va `install.bat`
+    xatosiz o'tdi.
+- **Hali sinovdan o'tkazilmagan** — foydalanuvchi Premiere'da yangi standart stilni ko'rishi
+  kerak.
+- Kelajakda: agar bu ham "juda animatsiyali" tuyulsa, hozircha yagona yechim — boshqa
+  stillardan birini sinab ko'rish (preview orqali) yoki oddiy "Subtitr yaratish" tugmasiga
+  ham stil-tanlash UI qo'shish (hali qurilmagan, so'ralganda qo'shish mumkin).
+
+## 2026-08-06 (davomi 7) — Subtitr yaratish tezligi: Whisper large-v3 → small
+
+- Foydalanuvchi "Subtitr yaratish" juda sekin (ko'p vaqt olyapti) deb shikoyat qildi.
+  Sabab: `srt_bot/.env`da `WHISPER_MODEL_SIZE=large-v3` (CPU'da, `int8`) — bu 2026-08-05
+  sessiyasida **so'z tanish aniqligi** uchun махсус o'rnatilgan edi. Lekin bugungi
+  `hybrid_transcriber.py` arxitekturasidan keyin bu asosan **keraksiz bo'lib qoldi**: yakuniy
+  matn endi Gemini'dan keladi (Whisper faqat vaqt-langar sifatida, fuzzy-moslashtirish
+  orqali ishlatiladi) — ya'ni Whisper qanchalik "to'g'ri eshitishi" endi unchalik muhim emas,
+  faqat vaqt-belgilash sifati muhim.
+  - Tuzatildi: `WHISPER_MODEL_SIZE` `large-v3`dan **`small`**ga qaytarildi (`config.py`dagi
+    original standart qiymat ham shu edi — katta modelga faqat vaqtinchalik o'tilgan edi).
+    Bot to'xtatilib qayta ishga tushirildi (jarayonni to'xtatishda port 8899 band bo'lib
+    qolgan holat ham tuzatildi — eski python jarayon zombie qolib ketgan edi, `Get-Process
+    python | Stop-Process -Force` bilan tozalandi).
+- `spelling_correction.py` (Whisper so'zlarini alignment uchun standart imloga keltiruvchi
+  qo'shimcha Gemini chaqiruvi) hozircha **o'zgartirilmadi** — bu vaqt jihatidan katta
+  ta'sir qilmaydi (bitta batched so'rov), lekin fuzzy-alignment sifatiga hali ham yordam
+  beradi.
+- **Hali sinovdan o'tkazilmagan**: foydalanuvchi haqiqiy video bilan "Subtitr yaratish"ni
+  qayta sinab, tezlik sezilarli yaxshilanganini va so'z/vaqt sifati hamon qoniqarli
+  ekanligini tasdiqlashi kerak (birinchi urinishda `small` model fayli hali yuklab olinmagan
+  bo'lsa avtomatik yuklanadi — bir martalik qo'shimcha kutish bo'lishi mumkin).
+
+### Keyingi qadam
+- Foydalanuvchi tezlik va sifatni tasdiqlashi kerak. Agar hamon sekin bo'lsa yoki sifat
+  yetarli bo'lmasa — `WHISPER_MODEL_SIZE`ni oraliq qiymatga (`medium`) qaytarish yoki
+  `WHISPER_DEVICE`ni GPU'ga o'tkazish muhokama qilinishi kerak.
+- Ishlagach: git'da commit qilish (hozircha faqat lokal o'zgarish, juda ko'p to'plandi).
+
+## 2026-08-07 — Gemini narx/kvota muhokamasi + bot deploy oldidan QA (interfeys tekshiruvi)
+
+- Foydalanuvchi bepul Gemini kvotasi (429 xatolik, kuniga 20 so'rov) tugagach, qaysi
+  modelga o'tish/billing yoqish haqida so'radi. Tekshirildi (rasmiy narx sahifasi): eski
+  `gemini-flash-latest` (moving alias) hozir `gemini-3.6-flash`ga ishora qilar ekan —
+  bashorat qilib bo'lmaydigan narx/kvota xavfi. **Pinned (qattiq belgilangan) modellarga
+  o'tildi**: transkripsiya (audio, aniqlik muhim) — `gemini-2.5-flash`; sodda matn ishlari
+  (imlo tuzatish, B-roll kalit so'z) — `gemini-2.5-flash-lite` (arzonroq). O'zgartirilgan
+  joylar: `srt_bot/gemini_transcriber.py`, `srt_bot/spelling_correction.py`,
+  `PluginProperties.java` (yangi `gemini.lite-model` maydoni qo'shildi),
+  `application.properties`, `BrollSceneService.java` (endi lite-model ishlatadi). Java
+  qayta build qilindi, bot/backend qayta ishga tushirildi.
+- Narx/marja hisob-kitobi qilib berildi: audio narxi 32 token/soniya (rasmiy hujjat),
+  2 daqiqalik video ~$0.006, 10 daqiqalik ~$0.03. 99 000 so'm/oy narxda foydalanuvchi
+  darajasiga qarab ~85-99% sof foyda marjasi (Gemini xarajati hisobga olinganda).
+- **AWS**: foydalanuvchi 6 oylik bepul AWS krediti ($200, 2025-iyuldan keyingi yangi
+  qoida) olgan. Tavsiya: `t3.medium` (2vCPU/4GB, ~$30/oy) dan boshlash, kerak bo'lsa
+  `t3.large`ga o'tish. 6 oydan keyingi taxminiy xarajat (t3.medium+disk) ~$33/oy
+  (~395 000 so'm) — bu narxda ~5 ta obunachi hosting xarajatini yopadi, qolgani sof foyda.
+
+- **Foydalanuvchi so'rovi: "bugun deploy qilishdan oldin bot interfeysini to'liq
+  tekshirib, kamchiliklarni tuzataylik".** `srt_bot`ning barcha fayllari
+  (`bot.py`, `keyboards.py`, `licensing_handlers.py`, `licensing.py`, `config.py`,
+  `media.py`, `srt_builder.py`) qatma-qat o'qib chiqildi. **To'rtta jiddiy muammo
+  topildi va tuzatildi**:
+  1. **Bepul kvota erta sarflanardi**: `licensing.check_and_use_free_quota()` foydalanuvchi
+     fayl yuklagan ZAHOTI kunlik limitni yozib qo'yardi — keyin format tanlamasa yoki
+     transkripsiya xato bersa ham (masalan Gemini xatosi), foydalanuvchi natija olmay
+     kunlik urinishini behuda yo'qotardi. Tuzatildi: `has_free_quota_today()` (faqat
+     o'qiydi, erta rad javobi uchun) va `record_free_usage()` (faqat **muvaffaqiyatli**
+     natija — `answer_document` yuborilgandan keyin — chaqiriladi) ga bo'lindi.
+  2. **20MB+ fayl butunlay ishlamas edi (kritik)**: `.env`da `TELEGRAM_API_ID`/
+     `TELEGRAM_API_HASH`/`LOCAL_BOT_API_URL` bor edi (local Bot API server uchun
+     mo'ljallangan, kattaroq fayl yuklash imkonini beradi), lekin **kodda hech qayerda
+     ishlatilmagan** edi — bot standart bulutli Telegram Bot API orqali ishlar edi, u esa
+     fayl yuklab olishni qattiq **20MB** bilan cheklaydi (rasmiy hujjatda tasdiqlangan).
+     `MAX_FILE_SIZE_BYTES` esa 500MB deb qo'yilgan edi va `on_media`dagi yuklab olish kodi
+     `try/except`siz edi — ya'ni 20-500MB oralig'idagi (juda oddiy holat!) har qanday video
+     **jim** (hech qanday xabarsiz) muvaffaqiyatsiz tugardi. Foydalanuvchi bilan
+     kelishildi: hozircha **tezkor tuzatish** — `MAX_FILE_SIZE_BYTES` haqiqiy 20MB'ga
+     tushirildi, aniq xabar bilan (`TOO_LARGE_TEXT`), va yuklab olish endi `try/except`
+     bilan himoyalangan (`DOWNLOAD_FAILED_TEXT`). **500MB'gacha to'liq qo'llab-quvvatlash
+     AWS'ga deploy qilinganda birga sozlanadi** (Linux'da Docker orqali `telegram-bot-api`
+     server ishga tushiriladi — Windows'da rasmiy build yo'q, ancha murakkabroq bo'lardi).
+  3. **`<code>` teglari hech qachon render bo'lmagan**: `licensing_handlers.py`dagi eng
+     muhim xabarlar (qurilma kodi, karta raqami, faollashtirish tokeni) — aynan
+     foydalanuvchi **nusxalashi** kerak bo'lgan joylar — `<code>...</code>` bilan
+     yozilgan, lekin botda `parse_mode` hech qayerda (global ham, chaqiruv darajasida
+     ham) sozlanmagan edi. Natijada foydalanuvchi ekranida xom `<code>ABCD-1234</code>`
+     matni chiqardi (chiroyli nusxalanadigan blok o'rniga). Tuzatildi: `bot.py`da
+     `Bot(..., default=DefaultBotProperties(parse_mode=ParseMode.HTML))`.
+  4. **Qurilma kodini kichik harfda kiritsa bot javob bermas edi**: `DEVICE_CODE_RE` katta-
+     kichik harfga sezgir edi (`^[A-Z0-9]{4}-...$`, `re.IGNORECASE` yo'q); handler ichida
+     `.upper()` bo'lsa-da, TASHQI filtr (qaysi xabarlar shu handlerga tegishli ekanini
+     hal qiluvchi) kichik harfli kodni umuman handlerga yubormas edi — foydalanuvchi
+     kodni qo'lda kichik harfda yozsa (nusxalash o'rniga), bot **hech narsa javob
+     bermasdi**. Tuzatildi: pattern ichiga `(?i)` qo'shildi (`DEVICE_CODE_RE.pattern`
+     xususiyati flag'siz qatorni qaytargani uchun `re.compile(..., re.IGNORECASE)`
+     alohida ishlamas edi — flag pattern matniga bevosita joylashtirilishi shart edi).
+  - **Kichikroq, kod-bilan-bog'liq bo'lmagan topilma (tuzatilmadi, faqat qayd etildi)**:
+    Python bot (`srt_builder.py`) hamon eski **belgi-soni** asosidagi "premium"/"1"/"2"/"3"
+    style tizimini ishlatadi — Java/Premiere tomoni esa 2026-07-31da **so'z-soni**
+    asosidagi tizimga o'tkazilgan edi. Ikkalasi endi boshqa-boshqa algoritm — funksional
+    xato emas (ikkalasi ham "1 qator = 1 qator" kafolatini beradi), lekin muvofiqlik
+    yo'q. Foydalanuvchidan so'ralmadi, hozircha o'zgartirilmadi.
+  - `py_compile` barcha o'zgartirilgan fayllar uchun xatosiz o'tdi. Bot qayta ishga
+    tushirildi, barcha 4 tuzatish kuchga kirgan holda ishlab turibdi.
+- **Hali sinovdan o'tkazilmagan**: foydalanuvchi haqiqiy Telegram orqali to'liq oqimni
+  (video yuborish → format tanlash → SRT olish; qurilma kodi yuborish → to'lov
+  ko'rsatmasi endi to'g'ri `<code>` blok bilan chiqishi → admin tasdiqlash) sinashi kerak.
+
+### Keyingi qadam
+- Foydalanuvchi Telegram'da botni haqiqatan sinab, yuqoridagi 4 tuzatishni tasdiqlashi
+  kerak (ayniqsa `<code>` bloklari va 20MB xabari).
+- Ishlagach: git'da commit qilish (juda ko'p o'zgarish to'plandi, hali push qilinmagan).
+
+## 2026-08-07 — AWS deploy amalga oshirildi (server topish, tozalash, HTTPS, systemd)
+
+- **Raqobatchi tahlili**: foydalanuvchi `C:\Users\DELL\Downloads\UzCaption-Plugin` (caption.uz,
+  @uzcaptions_bot) degan boshqa CEP pluginni yubordi — solishtirib chiqildi. Muhim topilmalar:
+  (1) ular Gemini/Pexels/Giphy kabi barcha AI so'rovlarini **serverga yashirgan** (klientda
+  hech qanday kalit yo'q) — bizning rejalashtirilgan "server-proxy" yo'nalishimizni
+  tasdiqladi; (2) ularda **avtomatik yangilanish** mexanizmi bor (server `latest_version`
+  qaytaradi, ZIP yuklab, tekshirib, keyingi Premiere ochilishida joylashtiradi,
+  backup+rollback bilan); (3) audio uchun `seq.exportAsMediaDirect()` (Premiere'ning rasmiy
+  sequence-audio-eksport API'si, `.epr` preset bilan) ishlatishadi — bizning
+  `findSourceTimeZeroOffset()` orqali manba faylni topib offset hisoblash yondashuvimizdan
+  farqli, bu offset-bug'larini butunlay yo'q qiladi (kelajakda ko'chirish tavsiya etiladi).
+  Ularning manifest'ida `ExtensionBundleName="Uzbek AI Captions"` va papka nomi ham
+  `uzbek-ai-captions` ekani qayd etildi (Bundle ID'lar farqli, to'g'ridan-to'g'ri nusxa
+  emas) — ehtimol tanish hamkor (Xojiakbarxon)ning mahsuloti.
+- Foydalanuvchi uchta katta ishni ("AWS deploy + server-proxy", "auto-update",
+  "sequence-audio eksport") **hammasini ketma-ket** qilishni so'radi — shu sessiyada faqat
+  **AWS deploy** qismi to'liq bajarildi (quyida), qolgan ikkitasi hali boshlanmagan.
+
+- **AWS hisob chalkashligi (muhim, ehtiyot chorasi sifatida qayd etiladi)**: AWS CLI
+  standart profili (`default`, hisob `339640512462`) foydalanuvchining **o'zi emas**
+  ekani aniqlandi — u yerda "TaskApp" degan **boshqa, faol** loyiha (Docker: Java backend +
+  Postgres, hozir ham so'rovlar kelayotgan edi) ishlab turgan edi. Foydalanuvchi buni
+  **tasdiqlamadi** ("Mutal" nomi chalkashtirdi) — **hech narsaga tegilmadi**. To'g'ri hisob
+  aniqlandi: `205080700819` (mavjud `shox-med` profili orqali, garchi nomi chalg'itsa ham) —
+  foydalanuvchi buni o'zining haqiqiy hisobi deb **aniq tasdiqladi**.
+- **Server tozalandi**: `205080700819` hisobidagi mavjud instans (`i-029513291443dbb52`,
+  `shox-med-platform`, `13.53.201.43`, t3.small, eu-north-1) da oldin "Shox Med Platform"
+  (boshqa, tibbiyot-mavzusidagi loyiha — nginx + PostgreSQL 14 + systemd xizmati) ishlab
+  turgan edi. Foydalanuvchi **aniq tasdiqlagach**: `shox-med.service` va
+  `postgresql@14-main.service` to'xtatildi va avtostartdan o'chirildi (**ma'lumotlar
+  o'chirilmadi**, diskda saqlanib qoldi — kerak bo'lsa tiklash mumkin).
+- **Domen**: foydalanuvchida pullik domen yo'q edi — bepul **DuckDNS** orqali yangi
+  subdomain olindi: **`aitilmoch.duckdns.org`** (loyihaning yangi nomi muhokamasi
+  jarayonida "Tilmoch" tavsiya qilingandan keyin tanlangan). DuckDNS update API orqali
+  server IP'siga (`13.53.201.43`) bog'landi.
+- **HTTPS**: `certbot --nginx` orqali haqiqiy Let's Encrypt sertifikati olindi
+  (`aitilmoch.duckdns.org`, 2026-11-05gacha amal qiladi, avtomatik yangilanadigan). nginx
+  `/etc/nginx/sites-available/aitilmoch` — port 80/443 dan `127.0.0.1:8899`ga (bot/litsenziya
+  serveri) proxy qiladi, `client_max_body_size 300M` (katta WAV yuklashlar uchun).
+- **Kod deploy**: `srt_bot/` (venv/cache/log/db'siz) serverga ko'chirildi
+  (`~/uzbek-ai-captions/srt_bot`), Python 3.10 venv yaratildi (avval `python3.10-venv`
+  paketi yetishmagan edi, o'rnatildi), `requirements.txt` to'liq o'rnatildi
+  (faster-whisper, aiogram, google-genai va h.k.).
+- **systemd xizmati**: `uzbek-ai-captions-bot.service` yaratildi (`Restart=always`,
+  loglar `bot.log`ga yoziladi, avtostart yoqilgan). **Mahalliy (Windows) bot avval
+  to'xtatildi** (bitta Telegram token bilan ikkita joyda bir vaqtda ishlay olmaydi) —
+  bot endi **faqat serverda** ishlaydi.
+- **Java tomoni yangilandi**: `application.properties`dagi `plugin.license.server-url` va
+  `plugin.whisper.server-url` endi `https://aitilmoch.duckdns.org/...` ga ishora qiladi
+  (avval `http://localhost:8899/...`). Jar qayta build qilindi (`mvnw package` — eski
+  jar java jarayoni band qilib turgani uchun avval to'xtatildi), backend qayta ishga
+  tushirildi. **Sinovdan o'tkazildi**: mahalliy backend `GET /api/license/status` orqali
+  yangi HTTPS serverga muvaffaqiyatli murojaat qildi (`reason: not_found` — kutilgan,
+  chunki yangi server ma'lumotlar bazasi toza, bu kompyuter hali faollashtirilmagan).
+- **Hozirgi holat**: server end-to-end ishlab turibdi (`https://aitilmoch.duckdns.org/license/health`
+  → `{"status":"ok"}`). Foydalanuvchi @srt_subtitr_bot'ga video yuborib sinashi,
+  va bu qurilmani (device code `CKFD-S2UX-487E`) admin sifatida yangi serverda qayta
+  faollashtirishi kerak (eski litsenziya ma'lumotlari yangi serverga ko'chirilmagan).
+
+### Keyingi qadam
+- Foydalanuvchi Telegram bot orqali to'liq oqimni (video → SRT, qurilma kodi → admin
+  avtofaollashtirish) yangi serverda sinashi kerak.
+- Qurilma kodini (`CKFD-S2UX-487E`) yangi serverda qayta faollashtirish (admin sifatida
+  botga yuborish orqali).
+- **Navbatdagi katta ishlar** (foydalanuvchi so'ragan, hali boshlanmagan): (1) Gemini/
+  Pexels/Giphy so'rovlarini serverga proxy qilish (API kalitlarini himoya qilish +
+  klonlanishning oldini olish), (2) CEP panel uchun avtomatik yangilanish mexanizmi
+  (UzCaption'nikiga o'xshab), (3) Premiere audio eksportini `seq.exportAsMediaDirect()`ga
+  o'tkazish (offset bug'larini yo'qotish uchun).
+- Ishlagach: git'da commit qilish (juda ko'p o'zgarish to'plandi, hali push qilinmagan).
+
+## 2026-08-07 (davomi) — Server-proxy: Gemini tarjima + B-roll endi AWS orqali
+
+- Foydalanuvchi tasdiqlagach, uchta navbatdagi ishni ketma-ket boshladik. **Birinchisi —
+  server-proxy — to'liq bajarildi**:
+  - **Python (server)**: `gemini_transcriber.py`ga `translate_to` parametri qo'shildi
+    (Java'dagi `TRANSLATION_LANGUAGES`/prompt aynan ko'chirildi). Yangi `broll.py` —
+    `BrollSceneService.java` (sahna guruhlash) + `PexelsService.java` + `GiphyService.java`
+    ning to'liq Python porti (`aiohttp` orqali async so'rovlar). Yangi `proxy_server.py` —
+    ikkita endpoint: `POST /transcribe-translate` (WAV + `?translateTo=`, litsenziya bilan
+    himoyalangan, `/transcribe` bilan bir xil chegara/naqsh) va `POST /broll-suggestions`
+    (JSON segmentlar → sahna+nomzodlar, litsenziya bilan himoyalangan). `licensing_server.py`
+    ga ulandi. `config.py`ga `PEXELS_API_KEY`/`GIPHY_API_KEY` qo'shildi.
+  - **Java (klient)**: `GeminiTranscriptionService` endi Gemini'ga to'g'ridan-to'g'ri emas,
+    yangi serverga (`plugin.translate.server-url`) murojaat qiladi (Whisper xizmati bilan
+    bir xil naqsh — device-code+token header, retry). `BrollSceneService` xuddi shunday
+    qayta yozildi (`plugin.broll.server-url`) — endi bitta HTTP chaqiruv orqali sahna+barcha
+    nomzodlarni oladi, **`PexelsService.java` va `GiphyService.java` butunlay o'chirildi**
+    (endi kerak emas). `BrollController` shunga mos yangilandi (endi faqat
+    `BrollSceneService`+`GifConversionService` kerak — `/api/broll-download` o'zgarmadi,
+    chunki u faqat ochiq media-URL'ni yuklaydi, kalit kerak emas edi).
+  - **Config**: `PluginProperties`dan `Gemini`/`Pexels`/`Giphy` ichki klasslari olib
+    tashlandi, o'rniga `Translate`/`Broll` (`server-url` bilan) qo'shildi.
+    `application.properties`ga yangi ikkita server-url qo'shildi (AWS domenga ishora
+    qiladi). **`application-local.properties`dan `plugin.gemini.api-key`,
+    `plugin.pexels.api-key`, `plugin.giphy.api-key` butunlay olib tashlandi** — bu
+    aynan bugungi maqsad edi: bu kalitlar endi tarqatiladigan plagin nusxasida
+    umuman yo'q, faqat AWS serverning `.env`sida.
+  - Java qayta build qilindi (`mvnw package`, eski jar java jarayoni band qilib
+    turgani uchun avval to'xtatildi), backend qayta ishga tushirildi.
+  - Yangi endpointlar serverga ko'chirildi, `.env`ga `PEXELS_API_KEY`/`GIPHY_API_KEY`
+    qo'shildi, bot xizmati qayta ishga tushirildi. **Sinovdan o'tkazildi**: ikkala yangi
+    endpoint ham litsenziyasiz so'rovni to'g'ri `402` bilan rad etadi (haqiqiy litsenziya
+    bilan to'liq oqim hali sinalmagan — dev kompyuter yangi serverda hali qayta
+    faollashtirilmagan).
+- **Hali kerak**: foydalanuvchi qurilma kodini (`CKFD-S2UX-487E`) admin sifatida botga
+  qayta yuborib, shu kompyuterni yangi serverda faollashtirishi, so'ng haqiqiy tarjima va
+  B-roll so'rovlarini Premiere'da sinashi kerak.
+
+### Keyingi qadam
+- Foydalanuvchi qurilmani qayta faollashtirib, tarjima+B-roll'ni haqiqiy sinash.
+- Ishlagach: git'da commit qilish (juda ko'p o'zgarish to'plandi, hali push qilinmagan).
+
+## 2026-08-07 (davomi 2) — Avtomatik yangilanish + sequence-audio eksport + AE + responsive
+
+- **Avtomatik yangilanish** (UzCaption naqshiga asoslanib): `main.js`ga to'liq mexanizm
+  qo'shildi — `PLUGIN_VERSION` (`1.1.0`, manifest bilan mos), `checkForUpdate()` (boot'da
+  serverdan `GET /plugin/version` so'raydi), yangi versiya topilsa panel tepasida
+  `#update-banner` ko'rinadi ("Yangilash" tugmasi bilan). Bosilsa `stageUpdate()` — ZIP'ni
+  yuklab, tekshirib (`verifyPackage` — kerakli fayllar bormi, versiya mos keladimi),
+  extensions papkasi yonidagi vaqtinchalik `.uzbek-ai-captions-pending`ga joylaydi.
+  `applyPendingUpdate()` panel boot'ida chaqiriladi — oldingi safar tayyorlab qo'yilgan
+  yangilanish bo'lsa, eski nusxani backup qilib, ustiga yozadi (xato bo'lsa avtomatik
+  qaytaradi). **Server tomoni**: yangi `srt_bot/plugin_release.py` —
+  `GET /plugin/version`/`GET /plugin/download` (litsenziyasiz, ochiq — bu shunchaki o'rnatish
+  paketi). `~/uzbek-ai-captions/srt_bot/plugin-release/` papkasiga joriy pluginning ZIP'i
+  (`uzbek-ai-captions.zip`) va `VERSION` fayli qo'yildi, serverga yuklandi, sinovdan
+  o'tkazildi (ikkala endpoint ham to'g'ri javob berdi).
+- **Sequence-audio eksport** (offset bug'larini yo'qotish uchun): raqobatchi (UzCaption)
+  tahlilidan ilhomlanib, `host/index.jsx`ga yangi `exportActiveSequenceAudio(outputPath,
+  presetPath)` — Premiere'da `sequence.exportAsMediaDirect()` (rasmiy API, `.epr` preset
+  bilan) orqali audio to'g'ridan-to'g'ri **sequence'ning o'zidan** eksport qilinadi
+  (`findSourceTimeZeroOffset()` orqali manba faylni topib offset hisoblash o'rniga). Bu
+  degani — natija WAV har doim sequence'ning o'z 0-vaqtidan boshlanadi, shuning uchun
+  so'z/cue vaqtlarini joylashtirishda **offset kerak emas** (har doim 0). `.epr` preset
+  fayli (`audio_wav_mono_16k.epr`, foydalanuvchi bilan kelishilgan holda raqobatchi
+  papkasidan olindi — sof texnik audio-format sozlamasi) `host/assets/export-presets/`ga
+  qo'shildi. `main.js`da yangi `exportSequenceAudioForTranscribe()` — bu funksiya audio
+  eksport qilib, natija yo'lini "Subtitr yaratish" va B-roll/kinetic'ning umumiy
+  `transcribeForSegments()`ga `filePath` sifatida beradi (Java backend'ga hech qanday
+  o'zgarish kerak emas edi — WAV'ni yana ffmpeg orqali WAV'ga "qayta kodlash" zararsiz).
+  Barcha `importSrt`/`insertKineticText` chaqiruvlarida `sourceMediaPath` endi doim bo'sh
+  qator (offset endi har doim 0).
+- **After Effects to'liq qo'llab-quvvatlash** (avval "Subtitr yaratish" AE'da butunlay
+  ishlamas edi — `getActiveMediaPath()` AE'ni hard-block qilardi):
+  - `getActiveMediaPath()` endi AE uchun faol kompozitsiya nomini qaytaradi
+    (`_ae_findActiveComp()`, yangi helper).
+  - `exportActiveSequenceAudio()` AE uchun yangi `_ae_exportActiveCompAudio()`ga
+    yo'naltiriladi — AE'ning render queue'si orqali audio eksport qiladi (WAV/AIFF output
+    module shablonlaridan birini sinab ko'radi, faqat shu comp render qilinishi uchun
+    boshqa navbatdagi elementlarni vaqtincha o'chiradi).
+  - **Muhim tuzatish**: eski `importSrtAfterEffects()` subtitrlarni foydalanuvchining
+    haqiqiy kompozitsiyasiga QO'SHISH o'rniga, har doim **yangi, alohida, 1920x1080
+    hardcoded** composition yaratardi (foydalanuvchi qo'lda o'z kompozitsiyasiga
+    ko'chirishi kerak bo'lardi) — bu funksiya hech qachon asosiy oqimga ulanmagani uchun
+    (AE avval `getActiveMediaPath()`da bloklangan) sinalmagan/ishlatilmagan holda qolgan
+    edi. To'liq qayta yozildi: endi **faol kompozitsiyaning o'ziga** matn qatlamlari
+    qo'shadi, haqiqiy shrift/rang/kontur stili bilan (Arial Bold, oq matn + qora kontur,
+    komp o'lchamiga nisbatan hajm, pastda markazlashgan) — Premiere'dagi MOGRT-subtitr
+    vizual natijasiga yaqinlashtirildi. Qayta-generatsiya eskisini almashtiradi (stack
+    emas, `lastAeCaptionLayers`/`clearTrackedLayers` — Premiere'dagi bir xil naqsh).
+  - **Diqqat — hali AE'ga ko'chirilmagan**: Kinetic typography (MOGRT-asosida, faqat
+    Premiere API'sida bor) va B-roll (`insertBroll`) hamon faqat Premiere'da ishlaydi —
+    bu ataylab qoldirilgan (vaqt maqsadida ustuvorlik: asosiy "Subtitr yaratish" ikkala
+    hostda ham ishlashi ta'minlandi).
+- **Responsive dizayn**: `.kinetic-grid`/`.broll-grid` qattiq 2-3 ustunli
+  (`1fr 1fr`/`1fr 1fr 1fr`) o'rniga `repeat(auto-fill, minmax(...))` ga o'zgartirildi —
+  endi panel har qanday kenglikda (manifest MinSize 300px'gacha) kartalarni to'g'ri
+  qatorlarga qayta joylaydi, o'rniga sig'maydigan/kesilgan holat bo'lmaydi. Header'dagi
+  brend matni (`brand-title`/`brand-sub`) tor joyda kesilib, "..." bilan ko'rsatiladigan
+  qilindi (`text-overflow: ellipsis`) — oldin tor holatda tashqariga toshib ketishi
+  mumkin edi. `body`ga `overflow-x: hidden` xavfsizlik cho'g'i sifatida qo'shildi.
+- **Mac uchun o'rnatuvchi**: yangi `cep-extension/install.command` (bajarilishi mumkin
+  qilib belgilangan, `chmod +x`) — `install.bat`ning aynan Mac ekvivalenti (Mac CEP
+  extensions papkasiga nusxalaydi, `defaults write` orqali PlayerDebugMode yoqadi).
+- `node --check` (main.js, index.jsx) xatosiz o'tdi.
+- **Hali sinovdan o'tkazilmagan**: extension hali qayta o'rnatilmagan (foydalanuvchi
+  boshqa yo'nalishga o'tishni so'ragani uchun to'xtatilgan edi). Haqiqiy Premiere/AE
+  sinovi, auto-update to'liq oqimi (eski versiyadan yangisiga), va AE'da audio eksport +
+  subtitr qo'shish birortasi ham hali tekshirilmagan.
+
+### Keyingi qadam
+- Extension'ni qayta o'rnatib (`install.bat`), Premiere'da: (1) sequence-audio eksport
+  orqali subtitr yaratish, (2) auto-update banner ko'rinishi (server versiyasi
+  `main.js`dagi `PLUGIN_VERSION`dan yangi bo'lgani uchun ko'rinishi kutiladi — buni ham
+  tekshirish kerak, chunki ikkalasi hozir bir xil `1.1.0`), sinash kerak.
+- AE'da (agar mavjud bo'lsa): kompozitsiya ochib "Subtitr yaratish"ni sinash — audio
+  eksport + matn qatlamlari to'g'ri qo'shilishini tekshirish.
+- Kinetic va B-roll'ni AE'ga ko'chirish — hali qilinmagan, kerak bo'lsa keyingi ish.
+- Ishlagach: git'da commit qilish (bu sessiyada juda ko'p o'zgarish to'plandi).
+
+## 2026-08-07 (davomi 3) — Versiya 1.2.0 + Gemini model 404 tuzatildi + responsive kuchaytirildi
+
+- **Auto-update "yangi emas" xatosi**: sababi — men keyingi ishlarni (AE, sequence-audio,
+  responsive, Mac installer) qo'shgandan keyin versiyani qayta oshirmay, serverga eski
+  ZIP'ni qayta yubormay qoldirib ketibman (ikkalasi ham "1.1.0" bo'lib qolgan, lekin
+  mazmuni farq qilardi). Tuzatildi: versiya **1.2.0**ga oshirildi (`manifest.xml` +
+  `main.js`), yangi ZIP+VERSION serverga qayta yuklandi, ikkalasi endi mos.
+- **Responsive dizayn yanada kuchaytirildi**: foydalanuvchi Premiere panel guruhida juda
+  tor joyga (masalan Frame.io panel yonida) joylashtirilganda elementlar yarimlab
+  qirqilib qolishini xabar qildi. Sabab: CEP manifest'dagi MinSize (300px) amalda **qattiq
+  chegara emas** — Premiere guruhlangan panellarni undan ham torroq siqishi mumkin.
+  Qo'shimcha himoya qatlamlari: `.segment-btn`/`.toggle-label` endi min-width:0 + ellipsis
+  bilan (matn tashqariga toshmaydi), yangi `@media (max-width: 380px)` — bu kenglikdan
+  past bo'lsa header/combo-row/segmented/toggle-row barchasi vertikal qatorlarga
+  yig'iladi (yonma-yon emas), `body` padding kichrayadi. `overflow-x: hidden` xavfsizlik
+  cho'g'i sifatida qoldi.
+- **Muhim topilma — Gemini model 404 xatoligi**: foydalanuvchi tarjima funksiyasini
+  sinaganda `"Tarjima transkripsiyasi xatoligi (500): {"error": "transcription_failed"}"`
+  oldi. Server logini tekshirib chiqilganda sabab aniqlandi: `gemini-2.5-flash` va
+  `gemini-2.5-flash-lite` (bugun ertalab "arzon+aniq" deb tanlangan modellar) bu loyihaning
+  API kaliti uchun **404 qaytarayotgan edi** — Google javobi: "This model
+  models/gemini-2.5-flash is no longer available to new users" (modellar ro'yxatida hali
+  ko'rinsa-da, YANGI kalitlar/loyihalar uchun berilmaydi — faqat oldindan ishlatgan
+  hisoblarga qoldirilgan). Bu ertalabki narx-tadqiqoti umumiy blog manbalariga asoslangani
+  uchun, real ishlashini tekshirmasdan tanlangan edi — xato shu yerdan kelib chiqqan.
+  - **To'g'ri tuzatildi (taxmin qilmasdan, real so'rov bilan tasdiqlab)**: to'g'ridan-
+    to'g'ri serverdan curl orqali bir nechta joriy modelni sinab ko'rildi —
+    `gemini-3.5-flash` (3/3 muvaffaqiyatli) va `gemini-3.5-flash-lite` (muvaffaqiyatli)
+    ishlar ekan. `gemini_transcriber.py` (transkripsiya, `gemini-3.5-flash`),
+    `spelling_correction.py` va `broll.py` (`gemini-3.5-flash-lite`) shunga yangilandi.
+    Serverga joylashtirildi, bot qayta ishga tushirildi, va **uchalasi ham haqiqiy Gemini
+    so'rovi bilan sinovdan o'tkazildi** (SSH orqali to'g'ridan-to'g'ri, litsenziya
+    qatlamidan tashqarida): transkripsiya (sintetik audio bilan — nutq yo'q deb to'g'ri
+    bo'sh natija qaytardi), imlo tuzatish, va B-roll sahna-so'z topish — uchalasi ham
+    xatosiz ishladi.
+  - **Eslatma**: Java tomonida hech narsa o'zgartirilmadi — ertalabki server-proxy
+    o'zgarishi tufayli Gemini model nomi endi FAQAT Python'da (serverda) belgilanadi.
+- **Hali sinovdan o'tkazilmagan**: foydalanuvchi Premiere panelida haqiqiy tarjima va
+  B-roll so'rovlarini (litsenziya orqali, to'liq oqim bilan) sinashi kerak — hozirgacha
+  faqat server tomonida to'g'ridan-to'g'ri (litsenziyasiz) tekshirildi.
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'da panelni qayta ochib: (1) tarjima funksiyasini, (2) B-roll
+  funksiyasini, (3) tor joyga joylashtirilganda responsive ko'rinishni qayta sinashi
+  kerak.
+- Ishlagach: git'da commit qilish (bu sessiyada juda ko'p o'zgarish to'plandi).
+
+## 2026-08-07 (davomi 4) — Haqiqiy foiz-asosidagi progress tizimi (background job)
+
+- Foydalanuvchi raqobatchi (UzCaption)dagi kabi **haqiqiy foiz-progress** so'radi (ular
+  background-job + polling ishlatishadi). "To'liq" variant tanlandi (tezkor/soxta emas).
+- **Java backend to'liq qayta qurildi** — `POST /api/transcribe` endi natijani kutib
+  turmasdan, darhol `{jobId}` qaytaradi:
+  - Yangi `TranscriptionJobService` — har bir so'rov uchun fon oqimida (background
+    thread, `ExecutorService`) ishlaydigan job yaratadi, holatini xotirada
+    (`ConcurrentHashMap`) saqlaydi: `stage` (`audio`/`transcribing`/`building`/`done`) va
+    `progressPercent` (0-100).
+  - **Muhim cheklov (ochiq tan olindi)**: Whisper/Gemini o'zlari haqiqiy granular progress
+    bermaydi (bir martalik so'rov, oqim emas) — shuning uchun "transcribing" bosqichida
+    foiz **vaqt-asosida taxminiy hisoblanadi** (WAV faylning haqiqiy uzunligi
+    o'qiladi — `readWavDurationSeconds()`, header'dan — va shunga qarab kutilgan davomiylik
+    taxmin qilinadi, o'tgan vaqt/kutilgan vaqt nisbatida progress 10%→89% oralig'ida
+    o'sib boradi). Bu — aksariyat shunday tizimlarning haqiqiy qilishi (100% aniq
+    instrumentatsiya emas, chunki AI API'lar buni bermaydi), lekin statik spinnerdan
+    ancha yaxshi tuyuladi.
+  - Yangi `GET /api/transcribe/status/{jobId}` — joriy holatni qaytaradi, tugagach
+    (`done`/`error`) job xotiradan o'chiriladi (bir martalik olish).
+  - `TranscribeController` soddalashtirildi (validatsiya joyida qoldi, og'ir ish
+    `TranscriptionJobService`ga ko'chirildi).
+- **Panel (`main.js`)**: yangi `startTranscribeJob(requestBody)` — POST qilib jobId oladi,
+  keyin `GET /api/transcribe/status/{jobId}`ni har 800ms'da so'raydi, natija tayyor
+  bo'lguncha statusni "Matnga aylantirilmoqda... 47%" kabi jonli yangilab turadi.
+  `generateBtn` va `transcribeForSegments()` (B-roll/kinetic uchun ishlatiladigan umumiy
+  funksiya) ikkalasi ham shunga o'tkazildi.
+- `mvnw package` orqali qayta build qilindi (avval ishlayotgan java jarayoni to'xtatilib),
+  backend qayta ishga tushirildi. Yangi endpointlar **sinovdan o'tkazildi**: noto'g'ri
+  fayl yo'li bilan to'g'ri xato qaytardi, mavjud bo'lmagan jobId uchun status endpoint
+  to'g'ri "job topilmadi" javobini berdi.
+- Versiya **1.3.0**ga oshirildi, panel qayta o'rnatildi, yangi ZIP+VERSION serverga
+  yuklandi (versiyalar mos: 1.3.0).
+- **Hali sinovdan o'tkazilmagan**: haqiqiy video bilan to'liq oqim (progress foizi real
+  ko'rinishda qanday harakat qilishi, Whisper/Gemini haqiqiy vaqtiga qanchalik mos
+  kelishi) hali Premiere'da tekshirilmagan.
+
+### Keyingi qadam
+- Foydalanuvchi haqiqiy video bilan "Subtitr yaratish"ni sinab, progress-foizining
+  ko'rinishini tasdiqlashi kerak.
+- Ishlagach: git'da commit qilish (bu sessiyada juda ko'p o'zgarish to'plandi).
+
+## 2026-08-07 (davomi 5) — Kinetic: MOGRT kirish-animatsiyasini "chetlab o'tish" tajribasi
+
+- Foydalanuvchi kinetic so'zlarning "biroz kechikib chiqishi" haqida qayta ta'kidladi va
+  "animatsiyasini olib tashlab, o'z vaqtida chiqib-o'tadigan qilib" so'radi. MOGRT
+  animatsiya tezligini o'zgartirish imkoni yo'qligi allaqachon tasdiqlangani uchun, **yangi
+  texnik yondashuv sinaldi**: `insertKineticText()`da (`host/index.jsx`) har so'z klipi
+  joylashtirilgandan keyin endi uning **in-point**i (klipning ichki material boshlanishi)
+  `KINETIC_INTRO_SKIP_SECONDS = 0.15` soniyaga oldinga suriladi — bu klipning **timeline
+  pozitsiyasini** (`.start`, `word.start`da qoladi) o'zgartirmasdan, faqat qaysi ICHKI
+  frame'dan boshlab ko'rsatilishini siljitadi, ya'ni animatsiyaning "kirish" (fade/slide-in)
+  qismini chetlab o'tishga harakat qiladi — matn darhol "settled" holatda ko'rinishi
+  kutiladi. **Diqqat — bu hujjatlashtirilmagan/tasdiqlanmagan texnika** (bu loyihada
+  birinchi marta sinalmoqda): in-point o'zgartirilgandan keyin `.start` qayta tasdiqlanadi
+  (Premiere ikkalasini bog'lab qo'yishi ehtimoliga qarshi ehtiyot chorasi), lekin haqiqiy
+  natija (matn chindan darhol to'liq ko'rinadimi, yoki juda qisqa MOGRT'larda in-point
+  out-point'dan oshib xato berishi mumkinmi) **faqat Premiere'da sinab ko'rilgandan keyin**
+  ma'lum bo'ladi.
+- Versiya **1.3.1**ga oshirildi, panel qayta o'rnatildi, ZIP+VERSION serverga yuklandi.
+- **Hali sinovdan o'tkazilmagan** — foydalanuvchi Premiere'da haqiqiy kinetic
+  generatsiyasini sinab, so'zlar endi "kechikmasdan" chiqayotganini tasdiqlashi kerak.
+  Agar hali ham kech tuyulsa yoki xato chiqsa — `KINETIC_INTRO_SKIP_SECONDS` qiymatini
+  sozlash (oshirish/kamaytirish) yoki butunlay boshqa yondashuv kerak bo'lishi mumkin.
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'ni to'liq qayta ishga tushirib (host `.jsx` o'zgargani uchun
+  shart), kinetic typography'ni qayta sinab, natijani aytishi kerak.
+- Ishlagach: git'da commit qilish (bu sessiyada juda ko'p o'zgarish to'plandi, hali push
+  qilinmagan — sessiya juda katta bo'ldi, commit qilish tavsiya etiladi).
+
+## 2026-08-07 (davomi 6) — Intro-skip oddiy subtitrga ham qo'llandi (1.3.2)
+
+- Foydalanuvchi yana ta'kidladi: oddiy subtitr ham raqobatchidek animatsiyasiz bo'lsin.
+  Lekin native Premiere caption'ga qaytish "1 qator→2 qator" bugini qaytaradi (buni
+  ataylab MOGRT'ga o'tkazgan edik) — shuning uchun orqaga qaytmasdan, `insertKineticText`
+  uchun yozilgan **intro-skip** texnikasi (yuqoridagi yozuvga qarang) umumiy
+  `skipMogrtIntroAnimation(clip, startSeconds)` funksiyasiga chiqarilib,
+  **`insertCaptionMogrt()`ga (oddiy subtitr) ham qo'llandi** — MOGRT_INTRO_SKIP_SECONDS
+  = 0.15s. Shunday qilib qator-son to'g'riligi (MOGRT arxitekturasi) saqlanib qoladi,
+  animatsiya esa (agar sinov tasdiqlasa) deyarli sezilmay qoladi.
+- Versiya **1.3.2**ga oshirildi, panel qayta o'rnatildi, ZIP+VERSION serverga yuklandi.
+- **Hali sinovdan o'tkazilmagan** — ikkalasi (kinetic va oddiy subtitr) uchun ham
+  Premiere'da haqiqiy natija tekshirilishi kerak.
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'ni to'liq qayta ishga tushirib, HAM kinetic HAM oddiy subtitrni
+  qayta sinab: (1) qator soni to'g'rimi, (2) animatsiya kirishi sezilmay qolyaptimi.
+- Ishlagach: git'da commit qilish (sessiya juda katta bo'ldi, tavsiya etiladi).
+
+## 2026-08-07 (davomi 7) — Haqiqiy Premiere sinovi: subtitr vaqti buzilgani va responsive bug (1.3.3)
+
+- Foydalanuvchi birinchi marta haqiqiy Premiere'da "Subtitr yaratish"ni oxirigacha sinab
+  ko'rdi (skrinshot: "31/31 subtitr qo'shildi (14 ta qatlamda joylashtirildi)", 100%). Ikki
+  muammo xabar qildi: (1) subtitr **ortda qolib ketyapti** — gapirilgan joylarga to'liq
+  yozilmayapti, (2) panel **responsivligi buzilgan** — kontent panel eniga sig'masdan
+  kesilib/yarim bo'lib qolyapti ("dabdala").
+- **Sabab #1 topildi (yuqori ishonch, lekin hali vizual tasdiqlanmagan) — oldingi sessiyada
+  (davomi 5/6) qo'shilgan "intro-skip" tajribasi**: `skipMogrtIntroAnimation()`
+  (`MOGRT_INTRO_SKIP_SECONDS=0.15`, `clip.inPoint`ni siljitib `.start`ni qayta tasdiqlash)
+  o'sha paytda ham aniq **"hujjatlashtirilmagan, birinchi marta sinalyapti, Premiere'da
+  tasdiqlash kerak"** deb belgilangan edi — va bu aynan shu joy (klipning
+  joylashuvi/davomiyligi) endi buzilgan bo'lib chiqdi. Bu — sessiyaning eng so'nggi va eng
+  xavfli (klip pozitsiyasi/inPoint bilan ishlaydigan) o'zgarishi bo'lgani uchun eng ehtimolli
+  sabab. **Tuzatildi**: `skipMogrtIntroAnimation()` funksiyasi va ikkala chaqiruv joyi
+  (`insertKineticText()`, `insertCaptionMogrt()`) butunlay olib tashlandi — klip endi faqat
+  o'z asl (native) intro-animatsiyasi bilan, hech qanday inPoint-siljitishsiz joylashtiriladi
+  (1.3.0/1.3.1'gacha bo'lgan xatti-harakatga qaytdi, "so'z kechikib chiqadi" degan kichik
+  kosmetik shikoyat hisobidan pozitsiya to'g'riligi ustuvor qilindi).
+- **Sabab #2 topildi va tasdiqlandi (CSS Grid/Flexbox'ning mashhur "min-width: auto"
+  bug'i)**: `.main-grid` (`display:grid`, ikki ustunli, tor holatda `1fr`ga qulaydigan)ning
+  ikkala bolasi (`.col-left`, `.col-right`) `min-width`siz qoldirilgan edi — grid/flex
+  bolalari standart holatda `min-width: auto` bo'ladi, ya'ni ichidagi kontent
+  (masalan status matni) qanchalik uzun bo'lsa, bola shunchalik kengayadi va **butun panelni
+  eniga torroq bo'lishiga yo'l qo'ymaydi** — shu sabab kontent kesilib/scrollbar bilan
+  ko'rinardi (skrinshotda aynan "31/31 subtitr qo'shildi..." status satri panel chekkasida
+  keskin kesilgan holda ko'rindi). Xuddi shu bug ichkarida `#status-text` (`.status`
+  flex qatoridagi ikkinchi element)da ham bor edi. **Tuzatildi**: `.main-grid`,
+  `.col-left`, `.col-right`, `.panel`, `html`ga `min-width:0`/`overflow-x:hidden`
+  qo'shildi, `.status > span:last-child`ga `min-width:0` qo'shildi — endi uzun status
+  matni panel ichida **qatorlarga bo'linib** ko'rinadi, kesilmaydi.
+- Versiya **1.3.3**ga oshirildi (`manifest.xml`, `main.js`), `install.bat` bilan qayta
+  o'rnatildi, yangi ZIP+VERSION AWS serverga yuklandi va **sinovdan o'tkazildi**
+  (`GET /plugin/version` → `1.3.3`, `GET /plugin/download` → to'g'ri hajmda ZIP qaytardi).
+- **Hali sinovdan o'tkazilmagan**: foydalanuvchi Premiere'ni to'liq qayta ishga tushirib
+  (host `.jsx` o'zgardi — shart), (1) subtitr endi gapirilgan joylarga to'liq va vaqtida
+  yozilishini, (2) panel tor joyga joylashtirilganda endi kesilmasligini tasdiqlashi kerak.
+  Agar intro-skipni olib tashlash muammoni hal qilmasa — sabab boshqa joyda (masalan
+  `SrtBuilderService`ning cue-buzish mantig'ida yoki Whisper natijasining o'zida) qidirilishi
+  kerak bo'ladi.
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'ni to'liq qayta ishga tushirib, subtitr vaqti va panel
+  responsivligini qayta sinashi kerak.
+- Agar subtitr hali ham "ortda qolsa" — keyingi tekshirish nuqtasi: Whisper natijasining
+  o'zi (`word.start`/`word.end`) to'g'rimi, yoki `SrtBuilderService.packWords()`dagi
+  cue-buzish (`durationBreak`/`gapBreak`) mantig'ida xato bormi.
+- Ishlagach: git'da commit qilish (bir necha sessiyadan beri to'planib kelyapti, hali push
+  qilinmagan).
+
+## 2026-08-07 (davomi 8) — Haqiqiy sabab topildi: caption klipi cho'zilmasdan faqat qisqartirilardi (1.3.4)
+
+- Foydalanuvchi 1.3.3'ni sinab, muammo davom etayotganini xabar qildi ("to'liq
+  qilmayapti", "ortda tashlab ketyapti") — intro-skip'ni olib tashlash yetarli bo'lmadi,
+  demak sabab boshqa joyda edi.
+- **Haqiqiy sabab topildi**: `insertCaptionMogrt()`da klip davomiyligini moslashtiruvchi kod
+  faqat **qisqartirar edi** — `if ((insertedClip.end - insertedClip.start) > duration) { ...
+  qisqartir }` — agar kerakli cue davomiyligi (gap so'zlar aytilgan haqiqiy vaqt) MOGRT
+  shablonining **native (standart) uzunligidan uzunroq** bo'lsa, klip **hech qachon
+  cho'zilmagan** — shunchaki o'z qisqa standart uzunligida qolib, matn hali gapirilayotgan
+  paytdayoq ekrandan g'oyib bo'lgan. Ko'pchilik subtitr MOGRT shablonlari standart
+  ~2 soniyaga sozlangan, lekin ko'p cue'lar (2-3 qatorli, bir necha so'zli) undan ancha
+  uzoqroq davom etadi — shuning uchun **deyarli har bir cue** vaqtidan oldin yo'qolib,
+  keyingi cue boshlanguncha ekran bo'sh qolar edi (aynan "ortda qolib ketish"/"to'liq
+  yozilmaslik" ta'rifiga mos keladi). Bu — `insertKineticText()`dagi ataylab qilingan
+  "faqat qisqartir, hech qachon cho'zma" xatti-harakatidan (qisqa so'z-portlash
+  animatsiyalari uchun to'g'ri) **caption uchun noto'g'ri nusxa ko'chirilgan** edi.
+- **Tuzatildi**: endi klip oxiri **doim** `startSeconds + duration`ga o'rnatiladi (faqat
+  native uzunlikdan qisqa bo'lsagina emas) — kerak bo'lsa native uzunlikdan **cho'ziladi**
+  ham. Subtitr/lower-third MOGRT shablonlari (bitta-marta o'ynaydigan kinetic portlash
+  animatsiyalaridan farqli) o'zining "joylashgan" kadrida istalgancha ushlab turishga
+  mo'ljallangan, shuning uchun cho'zish xavfsiz deb hisoblandi.
+- Versiya **1.3.4**ga oshirildi, `install.bat` bilan qayta o'rnatildi, ZIP+VERSION AWS
+  serverga qayta yuklandi va tasdiqlandi (`GET /plugin/version` → `1.3.4`).
+- **Hali sinovdan o'tkazilmagan** — foydalanuvchi Premiere'ni to'liq qayta ishga tushirib,
+  subtitrlar endi to'liq gap davomida ekranda turishini tasdiqlashi kerak.
+
+### Keyingi qadam
+- Foydalanuvchi Premiere'ni to'liq qayta ishga tushirib (host `.jsx` o'zgardi — shart),
+  subtitr yaratib, endi har cue gapirilgan butun vaqt davomida ko'rinib turishini tekshirishi
+  kerak.
+- Agar hali ham muammo bo'lsa: klipni cho'zish MOGRT'ning ba'zi turlarida ishlamasligi
+  mumkin (native uzunlikdan tashqarida "freeze"ni qo'llab-quvvatlamaydigan shablon bo'lsa) —
+  shu holda qaysi aniq `.mogrt` fayl bilan sinalgani va xato xabari (agar `eTrim` catch
+  bloki ishga tushsa) kerak bo'ladi.
+- Ishlagach: git'da commit qilish (bir necha sessiyadan beri to'planib kelyapti, hali push
+  qilinmagan).

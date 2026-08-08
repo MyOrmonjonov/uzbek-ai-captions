@@ -10,7 +10,13 @@ import config
 # Uzbek had far less training data than its close relative Turkish. Gemini fixes the spelling
 # word-for-word, in a single batched call per transcript, while Whisper's timestamps are left
 # untouched — this keeps caption timing exact while getting Gemini-quality spelling.
-MODEL_NAME = "gemini-flash-latest"
+# Flash-Lite (not the full Flash tier gemini_transcriber.py uses): this call only rewrites
+# already-known words into standard spelling from text, no audio understanding needed, so the
+# cheaper/lighter model is accurate enough here without risking transcription quality. Pinned
+# (not "-latest") for predictable cost/quota — see gemini_transcriber.py for why.
+# gemini-2.5-flash-lite 404'd for this key (see gemini_transcriber.py's note) — verified
+# gemini-3.5-flash-lite actually works before switching.
+MODEL_NAME = "gemini-3.5-flash-lite"
 
 PROMPT = """Quyida nutqni tanish dasturi (Whisper) tomonidan avtomatik yozilgan o'zbekcha
 so'zlar ketma-ketligi berilgan. Past resursli til bo'lgani uchun Whisper ba'zan so'zlarni

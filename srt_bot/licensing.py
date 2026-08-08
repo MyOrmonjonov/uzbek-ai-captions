@@ -133,21 +133,27 @@ def verify(device_code: str, token: str) -> VerifyResult:
     return VerifyResult(True, days_left, "ok")
 
 
-def check_and_use_free_quota(telegram_user_id: int) -> bool:
-    """Returns True and records usage if the user hasn't used today's free
-    bot conversion yet; returns False (without recording) if already used."""
+def has_free_quota_today(telegram_user_id: int) -> bool:
+    """Read-only check, used to reject early (before downloading/processing anything)
+    if today's free bot conversion is already used. Does not record anything — call
+    record_free_usage() only once generation actually succeeds, otherwise a user who
+    hits a transient error (bad file, transcription hiccup, API error) would lose
+    their one daily try for nothing."""
     today = date.today().isoformat()
     with closing(_connect()) as conn:
         row = conn.execute(
             "SELECT last_used_date FROM free_usage WHERE telegram_user_id = ?",
             (telegram_user_id,),
         ).fetchone()
-        if row is not None and row[0] == today:
-            return False
+        return row is None or row[0] != today
+
+
+def record_free_usage(telegram_user_id: int) -> None:
+    today = date.today().isoformat()
+    with closing(_connect()) as conn:
         conn.execute(
             "INSERT INTO free_usage (telegram_user_id, last_used_date) VALUES (?, ?) "
             "ON CONFLICT(telegram_user_id) DO UPDATE SET last_used_date=excluded.last_used_date",
             (telegram_user_id, today),
         )
         conn.commit()
-        return True

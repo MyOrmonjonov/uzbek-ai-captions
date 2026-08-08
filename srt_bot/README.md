@@ -37,5 +37,5 @@ Birinchi ishga tushirishda Whisper modeli internetdan yuklab olinadi (keyingi sa
 
 ## Cheklovlar (v1)
 
-- Telegram Bot API standart serveri orqali fayllarni yuklab olish 20MB bilan cheklangan.
+- Fayl hajmi: `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` (.env, my.telegram.org'dan) sozlangan bo'lsa, bot mahalliy Bot API serveri (`telegram-bot-api` Docker konteyneri) orqali ishlaydi va 500MB'gacha qabul qiladi. Sozlanmasa, Telegram'ning standart bulut serveri orqali 20MB bilan cheklanadi.
 - Bir vaqtda foydalanuvchi boshqa fayl yuborsa, avvalgi kutilayotgan fayl almashtiriladi (baza yo'q, xotirada saqlanadi).
