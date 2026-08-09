@@ -154,15 +154,16 @@ function getActiveMediaPath() {
 function importSrt(srtPath, sourceMediaPath, mogrtFolder) {
     try {
         if (BridgeTalk.appName === "premierepro") {
-            // Routed through Premiere's native Captions import (importSrtPremiere), not the
-            // MOGRT path, per a direct comparison against a competitor plugin whose plain
-            // subtitles land correctly every time: it does the same thing (import the SRT,
-            // place it via native captions) instead of hand-placing a MOGRT clip per cue.
-            // insertCaptionMogrt() (still used, unrelated, for kinetic typography's per-word
-            // clips) is left in place but no longer reachable from this entry point — the
-            // trade-off (Premiere re-wraps lines by its own rules, ignoring maxLines/
-            // wordsPerLine, and caption font/color isn't scriptable) was made knowingly.
-            return importSrtPremiere(srtPath, sourceMediaPath);
+            // Back on the MOGRT path (insertCaptionMogrt), not Premiere's native Captions
+            // import (importSrtPremiere, still defined but unreachable from here now). Adobe
+            // has confirmed there is no ExtendScript API to place an imported caption onto the
+            // timeline at all — app.project.importFiles() brings the .srt in as a project item,
+            // but attaching it to a caption track is scriptable only by manual drag, which is
+            // why importSrtPremiere() silently did nothing when tested end-to-end (no exception,
+            // no visible placement). insertCaptionMogrt() places real, scriptable TrackItems, so
+            // it's the only route that can auto-place at all — matching what competitor plugins
+            // actually do under the hood, since they hit the same ExtendScript limitation.
+            return insertCaptionMogrt(DEFAULT_CAPTION_STYLE, srtPath, sourceMediaPath, mogrtFolder);
         } else if (BridgeTalk.appName === "aftereffects") {
             return importSrtAfterEffects(srtPath);
         }
