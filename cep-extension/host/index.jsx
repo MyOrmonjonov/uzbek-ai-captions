@@ -154,15 +154,15 @@ function getActiveMediaPath() {
 function importSrt(srtPath, sourceMediaPath, mogrtFolder) {
     try {
         if (BridgeTalk.appName === "premierepro") {
-            // Routed through insertCaptionMogrt(), not Premiere's native Captions import
-            // (importSrtPremiere, still defined but unreachable from here) — Adobe has confirmed
-            // there is no ExtendScript API to place an imported caption onto the timeline at all,
-            // so native import can only ever stop at the project bin and wait for a manual drag.
-            // DEFAULT_CAPTION_STYLE is pinned to Plain_fade_on specifically because it's the one
-            // template in the library with no slide/bounce motion — text holds at a fixed
-            // position and only fades in — the closest match to "no animation" that still yields
-            // a real, scriptable TrackItem overwriteClip() can auto-place.
-            return insertCaptionMogrt(DEFAULT_CAPTION_STYLE, srtPath, sourceMediaPath, mogrtFolder);
+            // Routed through Premiere's native Captions import (importSrtPremiere), not the
+            // MOGRT path, per a direct comparison against a competitor plugin whose plain
+            // subtitles land correctly every time: it does the same thing (import the SRT,
+            // place it via native captions) instead of hand-placing a MOGRT clip per cue.
+            // insertCaptionMogrt() (still used, unrelated, for kinetic typography's per-word
+            // clips) is left in place but no longer reachable from this entry point — the
+            // trade-off (Premiere re-wraps lines by its own rules, ignoring maxLines/
+            // wordsPerLine, and caption font/color isn't scriptable) was made knowingly.
+            return importSrtPremiere(srtPath, sourceMediaPath);
         } else if (BridgeTalk.appName === "aftereffects") {
             return importSrtAfterEffects(srtPath);
         }
@@ -414,12 +414,18 @@ function addOverlayTrack(sequence) {
 }
 
 /**
- * Imports the SRT into the project bin and stops there — deliberately NOT placed on the
- * timeline programmatically. Adobe has confirmed there is no ExtendScript API to place an
- * imported caption onto the timeline at all, so the user drags it onto the timeline themselves
- * — the same native mechanism they'd trigger by hand, and the one place this project's own
- * animated MOGRT overlays don't apply (the user explicitly wants a plain, non-animated caption
- * here, not a template-driven one).
+ * Imports the SRT into the project bin, then places it on its own overlay track automatically
+ * via overwriteClip() (not insertClip() — that ripples every later clip on every track, which
+ * previously pushed the user's actual video out of place).
+ *
+ * This used to require a manual drag from the Project panel instead — that caution turned out
+ * to be unwarranted: the "subtitle is wrong" reports that motivated it were actually (a) a
+ * PowerShell install bug leaving a stale, unrelated MOGRT build running, and (b) the sequence
+ * genuinely being longer than the source video file (confirmed correct — the generated SRT's
+ * own duration matched the *sequence's* duration exactly). With the underlying SRT content and
+ * timing now independently verified correct, there's no remaining reason to believe
+ * overwriteClip() placement (already relied on elsewhere — kinetic typography, B-roll) would
+ * behave any differently here.
  */
 function importSrtPremiere(srtPath, sourceMediaPath) {
     if (!app.project) {
@@ -435,17 +441,40 @@ function importSrtPremiere(srtPath, sourceMediaPath) {
         return "ERROR: Import qilingan subtitr fayli topilmadi.";
     }
 
-    try {
-        importedItem.select(true);
-    } catch (e) {
-        // selection is a nice-to-have; import already succeeded either way
-    }
-
     // Subtitle timestamps are relative to the sequence's own time zero (audio is exported
     // straight from the sequence, not a located source file — see
-    // exportSequenceAudioForTranscribe() in main.js), so dropping the caption clip at the very
-    // start of the timeline is what lines its cues up with the actual dialogue.
-    return "Subtitr loyihaga import qilindi. Project paneldan uni Timeline'ning ENG BOSHIGA (0-sekundga) sudrab tashlang.";
+    // exportSequenceAudioForTranscribe() in main.js), so offsetSeconds is always 0 here; kept
+    // as a variable (rather than hardcoding 0 below) only in case sourceMediaPath is ever
+    // passed again in the future.
+    var offsetSeconds = 0;
+    if (sourceMediaPath) {
+        var found = findSourceTimeZeroOffset(sequence, sourceMediaPath);
+        if (found !== null) {
+            offsetSeconds = Math.max(0, found);
+        }
+    }
+
+    // Regenerating (new "Subtitr yaratish" run) replaces the previously placed caption clip
+    // instead of stacking a second one on a second new track.
+    clearTrackedClips(lastCaptionClips);
+
+    try {
+        var overlay = addOverlayTrack(sequence);
+        sequence.videoTracks[overlay.trackIndex].overwriteClip(importedItem, secondsToTicksString(offsetSeconds));
+        var placedClip = sequence.videoTracks[overlay.trackIndex].clips[sequence.videoTracks[overlay.trackIndex].clips.numItems - 1];
+        if (placedClip) {
+            lastCaptionClips.push(placedClip);
+        }
+        return "Subtitr videoga moslab, alohida track'ga avtomatik qo'shildi.";
+    } catch (e) {
+        try {
+            importedItem.select(true);
+        } catch (eSelect) {
+            // selection is a nice-to-have; import already succeeded either way
+        }
+        return "Subtitr loyihaga import qilindi, lekin Timeline'ga avtomatik qo'yib bo'lmadi (" + e.toString() +
+            "). Project paneldan uni Timeline'ning ENG BOSHIGA (0-sekundga) sudrab tashlang.";
+    }
 }
 
 // Regenerating (new subtitle run) replaces the previous caption layers instead of stacking a
@@ -980,12 +1009,10 @@ function insertKineticText(style, wordsJson, sourceMediaPath, mogrtFolder, minDu
     }
 }
 
-// Default subtitle style until a dedicated multi-line "caption box" .mogrt exists — Plain_fade_on
-// picked specifically because, of all 20 styles, it's the only one with no slide/bounce motion
-// (text holds at a fixed position, just fades in) — extracted preview frames confirmed the text
-// never moves. Swap this (or expose a style picker on the plain "Subtitr yaratish" flow too) if a
-// purpose-built, fully static caption style shows up.
-var DEFAULT_CAPTION_STYLE = "Plain_fade_on";
+// Default subtitle style until a dedicated multi-line "caption box" .mogrt exists — chosen by
+// the user directly after comparing the in-panel style previews. Swap this (or expose a style
+// picker on the plain "Subtitr yaratish" flow too) if a purpose-built caption style shows up.
+var DEFAULT_CAPTION_STYLE = "Plain_word_down";
 
 /**
  * Places one MOGRT clip instance per subtitle cue (not per word) on its own overlay track, each
