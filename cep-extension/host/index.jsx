@@ -414,13 +414,18 @@ function addOverlayTrack(sequence) {
 }
 
 /**
- * Imports the SRT into the project bin and stops there — deliberately NOT placed on the
- * timeline programmatically. Earlier attempts (per PROGRESS.md history) placed it automatically
- * via overwriteClip() and still didn't reliably match Premiere's own native drag-and-drop
- * caption behavior. A side-by-side comparison against a competitor plugin (whose captions are
- * consistently correct) showed its Premiere flow does exactly this: import to the bin, then the
- * user drags it onto the timeline themselves — the same native mechanism the user would trigger
- * by hand, so there's no placement logic left here to get wrong.
+ * Imports the SRT into the project bin, then places it on its own overlay track automatically
+ * via overwriteClip() (not insertClip() — that ripples every later clip on every track, which
+ * previously pushed the user's actual video out of place).
+ *
+ * This used to require a manual drag from the Project panel instead — that caution turned out
+ * to be unwarranted: the "subtitle is wrong" reports that motivated it were actually (a) a
+ * PowerShell install bug leaving a stale, unrelated MOGRT build running, and (b) the sequence
+ * genuinely being longer than the source video file (confirmed correct — the generated SRT's
+ * own duration matched the *sequence's* duration exactly). With the underlying SRT content and
+ * timing now independently verified correct, there's no remaining reason to believe
+ * overwriteClip() placement (already relied on elsewhere — kinetic typography, B-roll) would
+ * behave any differently here.
  */
 function importSrtPremiere(srtPath, sourceMediaPath) {
     if (!app.project) {
@@ -436,17 +441,40 @@ function importSrtPremiere(srtPath, sourceMediaPath) {
         return "ERROR: Import qilingan subtitr fayli topilmadi.";
     }
 
-    try {
-        importedItem.select(true);
-    } catch (e) {
-        // selection is a nice-to-have; import already succeeded either way
-    }
-
     // Subtitle timestamps are relative to the sequence's own time zero (audio is exported
     // straight from the sequence, not a located source file — see
-    // exportSequenceAudioForTranscribe() in main.js), so dropping the caption clip at the very
-    // start of the timeline is what lines its cues up with the actual dialogue.
-    return "Subtitr loyihaga import qilindi. Project paneldan uni Timeline'ning ENG BOSHIGA (0-sekundga) sudrab tashlang.";
+    // exportSequenceAudioForTranscribe() in main.js), so offsetSeconds is always 0 here; kept
+    // as a variable (rather than hardcoding 0 below) only in case sourceMediaPath is ever
+    // passed again in the future.
+    var offsetSeconds = 0;
+    if (sourceMediaPath) {
+        var found = findSourceTimeZeroOffset(sequence, sourceMediaPath);
+        if (found !== null) {
+            offsetSeconds = Math.max(0, found);
+        }
+    }
+
+    // Regenerating (new "Subtitr yaratish" run) replaces the previously placed caption clip
+    // instead of stacking a second one on a second new track.
+    clearTrackedClips(lastCaptionClips);
+
+    try {
+        var overlay = addOverlayTrack(sequence);
+        sequence.videoTracks[overlay.trackIndex].overwriteClip(importedItem, secondsToTicksString(offsetSeconds));
+        var placedClip = sequence.videoTracks[overlay.trackIndex].clips[sequence.videoTracks[overlay.trackIndex].clips.numItems - 1];
+        if (placedClip) {
+            lastCaptionClips.push(placedClip);
+        }
+        return "Subtitr videoga moslab, alohida track'ga avtomatik qo'shildi.";
+    } catch (e) {
+        try {
+            importedItem.select(true);
+        } catch (eSelect) {
+            // selection is a nice-to-have; import already succeeded either way
+        }
+        return "Subtitr loyihaga import qilindi, lekin Timeline'ga avtomatik qo'yib bo'lmadi (" + e.toString() +
+            "). Project paneldan uni Timeline'ning ENG BOSHIGA (0-sekundga) sudrab tashlang.";
+    }
 }
 
 // Regenerating (new subtitle run) replaces the previous caption layers instead of stacking a
