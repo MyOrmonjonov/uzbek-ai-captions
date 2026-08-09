@@ -35,11 +35,25 @@ def _is_admin(user_id: int) -> bool:
     return config.ADMIN_TELEGRAM_ID != 0 and user_id == config.ADMIN_TELEGRAM_ID
 
 
-def _payment_instructions(device_code: str) -> str:
-    price = config.SUBSCRIPTION_PRICE_TEXT or "narx admin bilan kelishiladi"
+def _tariff_keyboard(device_code: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{t['label']} — {t['price_som']:,} so'm".replace(",", " "),
+                    callback_data=f"tariff:{device_code}:{t['key']}",
+                )
+            ]
+            for t in config.TARIFFS
+        ]
+    )
+
+
+def _payment_instructions(device_code: str, tariff: dict) -> str:
+    price = f"{tariff['price_som']:,} so'm".replace(",", " ")
     return (
-        f"Faollashtirish kodi qabul qilindi: <code>{device_code}</code>\n\n"
-        f"To'lov: {price}\n"
+        f"Tanlangan tarif: {tariff['label']} — {price}\n"
+        f"Faollashtirish kodi: <code>{device_code}</code>\n\n"
         f"Karta raqami: <code>{config.PAYMENT_CARD_NUMBER}</code>\n"
         f"Karta egasi: {config.PAYMENT_CARD_HOLDER}\n\n"
         "To'lovni amalga oshirgach, chek/skrinshotni shu yerga (botga) yuboring. "
@@ -65,23 +79,42 @@ async def on_device_code(message: Message) -> None:
     user_id = message.from_user.id
 
     if _is_admin(user_id):
-        token = licensing.approve(device_code, user_id, config.SUBSCRIPTION_DAYS)
+        token = licensing.approve(device_code, user_id, config.ADMIN_AUTO_ACTIVATE_DAYS)
         await message.answer(
             "Admin sifatida to'lovsiz avtomatik faollashtirildingiz ✅\n\n"
-            f"Token ({config.SUBSCRIPTION_DAYS} kunga amal qiladi):\n"
+            f"Token ({config.ADMIN_AUTO_ACTIVATE_DAYS} kunga amal qiladi):\n"
             f"<code>{token}</code>\n\n"
             "Buni Premiere/After Effects panelidagi “Token” maydoniga kiriting."
         )
         return
 
-    licensing.create_pending_request(device_code, user_id)
-    await message.answer(_payment_instructions(device_code))
+    await message.answer(
+        f"Faollashtirish kodi qabul qilindi: <code>{device_code}</code>\n\n"
+        "Qaysi tarifni tanlaysiz?",
+        reply_markup=_tariff_keyboard(device_code),
+    )
+
+
+@router.callback_query(F.data.startswith("tariff:"))
+async def on_tariff_selected(callback: CallbackQuery) -> None:
+    _, device_code, tariff_key = callback.data.split(":", 2)
+    tariff = config.TARIFFS_BY_KEY.get(tariff_key)
+    if tariff is None:
+        await callback.answer("Noma'lum tarif.", show_alert=True)
+        return
+
+    user_id = callback.from_user.id
+    licensing.create_pending_request(device_code, user_id, tariff["days"], tariff["label"])
+    await callback.message.edit_text(_payment_instructions(device_code, tariff))
+    await callback.answer()
 
     if config.ADMIN_TELEGRAM_ID:
-        username = f"@{message.from_user.username}" if message.from_user.username else str(user_id)
-        await message.bot.send_message(
+        username = f"@{callback.from_user.username}" if callback.from_user.username else str(user_id)
+        price = f"{tariff['price_som']:,} so'm".replace(",", " ")
+        await callback.bot.send_message(
             config.ADMIN_TELEGRAM_ID,
             f"Yangi faollashtirish so'rovi\nQurilma kodi: <code>{device_code}</code>\n"
+            f"Tarif: {tariff['label']} ({price})\n"
             f"Foydalanuvchi: {username} (id: {user_id})\n\n"
             "To'lov chekini kutib, so'ng tasdiqlang:",
             reply_markup=_admin_request_keyboard(device_code),
@@ -111,21 +144,21 @@ async def on_approve(callback: CallbackQuery) -> None:
         return
 
     device_code = callback.data.split(":", 1)[1]
-    requester_id = licensing.get_pending_request(device_code)
-    if requester_id is None:
+    pending = licensing.get_pending_request(device_code)
+    if pending is None:
         await callback.answer("Bu so'rov allaqachon ko'rib chiqilgan.", show_alert=True)
         return
 
-    token = licensing.approve(device_code, requester_id, config.SUBSCRIPTION_DAYS)
+    token = licensing.approve(device_code, pending.telegram_user_id, pending.tariff_days)
     await callback.bot.send_message(
-        requester_id,
+        pending.telegram_user_id,
         "To'lovingiz tasdiqlandi ✅\n\n"
-        f"Faollashtirish tokeningiz ({config.SUBSCRIPTION_DAYS} kunga amal qiladi):\n"
+        f"Faollashtirish tokeningiz ({pending.tariff_label}, {pending.tariff_days} kunga amal qiladi):\n"
         f"<code>{token}</code>\n\n"
         "Buni Premiere/After Effects panelidagi “Token” maydoniga kiriting.",
     )
     await callback.message.edit_text(
-        callback.message.text + f"\n\n✅ Tasdiqlandi ({config.SUBSCRIPTION_DAYS} kun)."
+        callback.message.text + f"\n\n✅ Tasdiqlandi ({pending.tariff_label})."
     )
     await callback.answer("Tasdiqlandi.")
 
@@ -137,11 +170,11 @@ async def on_reject(callback: CallbackQuery) -> None:
         return
 
     device_code = callback.data.split(":", 1)[1]
-    requester_id = licensing.get_pending_request(device_code)
+    pending = licensing.get_pending_request(device_code)
     licensing.reject(device_code)
-    if requester_id is not None:
+    if pending is not None:
         await callback.bot.send_message(
-            requester_id,
+            pending.telegram_user_id,
             "So'rovingiz rad etildi. Savol bo'lsa, admin bilan bog'laning.",
         )
     await callback.message.edit_text(callback.message.text + "\n\n❌ Rad etildi.")

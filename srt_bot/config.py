@@ -55,9 +55,23 @@ ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0") or "0")
 
 PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "").strip()
 PAYMENT_CARD_HOLDER = os.getenv("PAYMENT_CARD_HOLDER", "").strip()
-SUBSCRIPTION_PRICE_TEXT = os.getenv("SUBSCRIPTION_PRICE_TEXT", "").strip()
 
-SUBSCRIPTION_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
+# Product pricing, not a secret — hardcoded rather than env vars (unlike the payment card
+# details above, which vary per-deployment/could change without a code change). Each dict's
+# "key" is what travels inside a Telegram callback_data (see licensing_handlers.py's
+# "tariff:{device_code}:{key}"), so keep them short and stable — renaming one breaks any
+# tariff-selection button a user already has on screen mid-flow.
+TARIFFS = [
+    {"key": "1m", "label": "1 oy", "days": 30, "price_som": 99_000},
+    {"key": "3m", "label": "3 oy", "days": 90, "price_som": 239_000},
+    {"key": "6m", "label": "6 oy", "days": 180, "price_som": 499_000},
+    {"key": "12m", "label": "1 yil", "days": 365, "price_som": 599_000},
+]
+TARIFFS_BY_KEY = {t["key"]: t for t in TARIFFS}
+
+# Free automatic activation for the admin's own device (see licensing_handlers.py:on_device_code)
+# — longest tariff, since it's the dev/testing account rather than a paying customer.
+ADMIN_AUTO_ACTIVATE_DAYS = TARIFFS[-1]["days"]
 
 # Boshqa kompyuterlardagi backend'lar shu portga /license/verify so'rovi yuboradi.
 # Bot serverga (masalan AWS) chiqarilgach, panel/backend konfiguratsiyasida shu

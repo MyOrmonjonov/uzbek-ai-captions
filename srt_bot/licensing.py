@@ -35,7 +35,9 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS pending_requests (
             device_code TEXT PRIMARY KEY,
             telegram_user_id INTEGER NOT NULL,
-            requested_at REAL NOT NULL
+            requested_at REAL NOT NULL,
+            tariff_days INTEGER NOT NULL DEFAULT 30,
+            tariff_label TEXT NOT NULL DEFAULT ''
         )
         """
     )
@@ -47,6 +49,18 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
+    # CREATE TABLE IF NOT EXISTS above is a no-op against a pending_requests table that already
+    # existed before tariff_days/tariff_label were added, so an existing licenses.db (like the
+    # one already deployed) needs these columns bolted on explicitly. Safe to run every startup —
+    # SQLite errors out on a duplicate column, which is exactly the "already migrated" case.
+    for column_sql in (
+        "ALTER TABLE pending_requests ADD COLUMN tariff_days INTEGER NOT NULL DEFAULT 30",
+        "ALTER TABLE pending_requests ADD COLUMN tariff_label TEXT NOT NULL DEFAULT ''",
+    ):
+        try:
+            conn.execute(column_sql)
+        except sqlite3.OperationalError:
+            pass
     return conn
 
 
@@ -57,25 +71,33 @@ class VerifyResult:
     reason: str
 
 
-def create_pending_request(device_code: str, telegram_user_id: int) -> None:
+@dataclass
+class PendingRequest:
+    telegram_user_id: int
+    tariff_days: int
+    tariff_label: str
+
+
+def create_pending_request(device_code: str, telegram_user_id: int, tariff_days: int, tariff_label: str) -> None:
     with closing(_connect()) as conn:
         conn.execute(
-            "INSERT INTO pending_requests (device_code, telegram_user_id, requested_at) "
-            "VALUES (?, ?, ?) "
+            "INSERT INTO pending_requests (device_code, telegram_user_id, requested_at, tariff_days, tariff_label) "
+            "VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(device_code) DO UPDATE SET telegram_user_id=excluded.telegram_user_id, "
-            "requested_at=excluded.requested_at",
-            (device_code, telegram_user_id, time.time()),
+            "requested_at=excluded.requested_at, tariff_days=excluded.tariff_days, "
+            "tariff_label=excluded.tariff_label",
+            (device_code, telegram_user_id, time.time(), tariff_days, tariff_label),
         )
         conn.commit()
 
 
-def get_pending_request(device_code: str) -> int | None:
+def get_pending_request(device_code: str) -> PendingRequest | None:
     with closing(_connect()) as conn:
         row = conn.execute(
-            "SELECT telegram_user_id FROM pending_requests WHERE device_code = ?",
+            "SELECT telegram_user_id, tariff_days, tariff_label FROM pending_requests WHERE device_code = ?",
             (device_code,),
         ).fetchone()
-        return row[0] if row else None
+        return PendingRequest(*row) if row else None
 
 
 def approve(device_code: str, telegram_user_id: int, days: int) -> str:
