@@ -138,6 +138,24 @@
   .plist li svg{flex-shrink:0;margin-top:2px;color:var(--accent);}
   .pricing-card .btn{width:100%;padding:14px;font-size:15px;}
 
+  .pricing-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:900px;margin:0 auto;}
+  @media (min-width:820px){.pricing-grid{grid-template-columns:repeat(4,1fr);}}
+  .ptier{
+    position:relative;background:var(--bg-elev);border:1px solid var(--border);border-radius:16px;
+    padding:26px 20px;text-align:center;display:flex;flex-direction:column;gap:14px;
+  }
+  .ptier-best{border-color:var(--accent-dim);background:linear-gradient(180deg,var(--bg-elev-2),var(--bg-elev));}
+  .ptier-badge{
+    position:absolute;top:-11px;left:50%;transform:translateX(-50%);
+    background:var(--accent);color:#06170d;font-size:11px;font-weight:800;
+    padding:4px 10px;border-radius:999px;white-space:nowrap;
+  }
+  .ptier-name{font-size:14px;color:var(--text-dim);font-weight:600;}
+  .ptier-price{font-size:22px;font-weight:800;}
+  .ptier-price span{font-size:13px;font-weight:600;color:var(--text-dim);}
+  .plist-center{max-width:520px;margin:40px auto 0;align-items:center;}
+  .plist-center li{justify-content:center;}
+
   /* ---------- download ---------- */
   .dl-grid{display:grid;grid-template-columns:1fr;gap:20px;}
   @media (min-width:760px){.dl-grid{grid-template-columns:1fr 1fr;}}
@@ -183,7 +201,7 @@
       <a href="#qanday-ishlaydi">Qanday ishlaydi</a>
       <a href="#narxlar">Narxlar</a>
       <a href="#yuklab-olish">Yuklab olish</a>
-      <a href="https://t.me/YOUR_TELEGRAM_USERNAME" class="btn btn-accent btn-sm" target="_blank" rel="noopener">Sotib olish</a>
+      <a href="https://t.me/ravoncaptions_bot" class="btn btn-accent btn-sm" target="_blank" rel="noopener">Sotib olish</a>
     </div>
   </nav>
 </header>
@@ -199,7 +217,7 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
         Yuklab olish
       </a>
-      <a href="https://t.me/YOUR_TELEGRAM_USERNAME" class="btn btn-ghost" target="_blank" rel="noopener">Telegram orqali bog'lanish</a>
+      <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Telegram orqali bog'lanish</a>
     </div>
     <p class="platform-note">Windows va macOS uchun mavjud</p>
   </section>
@@ -269,19 +287,37 @@
   <section id="narxlar" class="wrap">
     <div class="section-head">
       <div class="kicker">Narxlar</div>
-      <h2>Oddiy, oylik obuna</h2>
+      <h2>O'zingizga mos muddatni tanlang</h2>
+      <p>Barcha tariflarda bir xil imkoniyatlar — faqat muddat farq qiladi.</p>
     </div>
-    <div class="pricing-card">
-      <div class="badge">Oylik obuna</div>
-      <div class="price">Tez orada e'lon qilinadi</div>
-      <ul class="plist">
-        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Cheksiz subtitr generatsiyasi</li>
-        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> 8 tilga tarjima</li>
-        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Kinetic typography va B-roll</li>
-        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> 1 qurilmaga litsenziya</li>
-      </ul>
-      <a href="https://t.me/YOUR_TELEGRAM_USERNAME" class="btn btn-accent" target="_blank" rel="noopener">Sotib olish</a>
+    <div class="pricing-grid">
+      <div class="ptier">
+        <div class="ptier-name">1 oy</div>
+        <div class="ptier-price">99,000<span> so'm</span></div>
+        <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
+      </div>
+      <div class="ptier">
+        <div class="ptier-name">3 oy</div>
+        <div class="ptier-price">239,000<span> so'm</span></div>
+        <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
+      </div>
+      <div class="ptier">
+        <div class="ptier-name">6 oy</div>
+        <div class="ptier-price">499,000<span> so'm</span></div>
+        <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
+      </div>
+      <div class="ptier ptier-best">
+        <div class="ptier-badge">Eng foydali</div>
+        <div class="ptier-name">1 yil</div>
+        <div class="ptier-price">599,000<span> so'm</span></div>
+        <a href="https://t.me/ravoncaptions_bot" class="btn btn-accent" target="_blank" rel="noopener">Sotib olish</a>
+      </div>
     </div>
+    <ul class="plist plist-center">
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Cheksiz subtitr generatsiyasi</li>
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> 8 tilga tarjima, kinetic typography, B-roll</li>
+      <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> 1 qurilmaga litsenziya</li>
+    </ul>
   </section>
 
   <section id="yuklab-olish" class="wrap">
@@ -324,7 +360,7 @@
     <div class="cta-band">
       <h2>Savolingiz bormi?</h2>
       <p>To'g'ridan-to'g'ri Telegram orqali yozing — tez orada javob beramiz.</p>
-      <a href="https://t.me/YOUR_TELEGRAM_USERNAME" class="btn btn-accent" target="_blank" rel="noopener" style="display:inline-flex;">Telegram'da yozish</a>
+      <a href="https://t.me/ravoncaptions_bot" class="btn btn-accent" target="_blank" rel="noopener" style="display:inline-flex;">Telegram'da yozish</a>
     </div>
   </section>
 
@@ -339,7 +375,7 @@
     <div class="foot-links">
       <a href="#imkoniyatlar">Imkoniyatlar</a>
       <a href="#narxlar">Narxlar</a>
-      <a href="https://t.me/YOUR_TELEGRAM_USERNAME" target="_blank" rel="noopener">Telegram</a>
+      <a href="https://t.me/ravoncaptions_bot" target="_blank" rel="noopener">Telegram</a>
     </div>
   </div>
 </footer>
