@@ -25,10 +25,8 @@ echo
 echo "O'rnatildi: $DEST"
 echo
 echo "Keyingi qadamlar:"
-echo "  1. Backendni ishga tushiring (D:\\Plugin ekvivalenti — run-server.sh yoki java -jar bilan)"
+echo "  1. UzbekAiCaptionsBackend dasturini (alohida yuklab olingan) ishga tushiring"
 echo "  2. Premiere Pro yoki After Effects'ni oching (agar ochiq bo'lsa, qayta oching)"
 echo "  3. Window > Extensions > Uzbek AI Captions"
-echo
-echo "Eslatma: ffmpeg PATH'da bo'lishi kerak (yoki backend konfiguratsiyasida yo'li ko'rsatilgan bo'lishi kerak)."
 echo
 read -p "Davom etish uchun Enter bosing..."
