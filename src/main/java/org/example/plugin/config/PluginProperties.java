@@ -28,7 +28,7 @@ public class PluginProperties {
     }
 
     public String getFfmpegPath() {
-        return ffmpegPath;
+        return BundledFfmpegResolver.resolve(ffmpegPath);
     }
 
     public void setFfmpegPath(String ffmpegPath) {
