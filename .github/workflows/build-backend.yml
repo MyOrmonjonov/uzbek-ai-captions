@@ -6,6 +6,12 @@ name: Build backend installers
 # serve whatever this workflow last produced. jpackage can only target the OS it runs on (no
 # cross-compiling a macOS package from a Windows machine), which is the whole reason this needs
 # CI rather than a local build script.
+#
+# Each job also assembles a single combined installer (cep-extension + the backend app-image +
+# installer/"O'rnatish (…)" — copies the plugin into Adobe's CEP folder, installs the backend to
+# a permanent location, and registers it to auto-start) — this is what the website's one
+# "Yuklab olish" button links to, so a customer runs exactly one file instead of two separate
+# downloads.
 on:
   workflow_dispatch: {}
 
@@ -55,6 +61,17 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "jpackage-out/$env:APP_NAME" -DestinationPath "$env:APP_NAME-windows.zip" -Force
 
+      - name: Assemble combined installer (plugin + backend + one install script)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path combined/plugin, combined/backend | Out-Null
+          Copy-Item cep-extension/CSXS combined/plugin/CSXS -Recurse
+          Copy-Item cep-extension/client combined/plugin/client -Recurse
+          Copy-Item cep-extension/host combined/plugin/host -Recurse
+          Copy-Item "jpackage-out/$env:APP_NAME/*" combined/backend -Recurse
+          Copy-Item "installer/O'rnatish (Windows).bat" combined/
+          Compress-Archive -Path combined/* -DestinationPath RavonCaptions-windows.zip -Force
+
       - name: Upload to server
         shell: bash
         env:
@@ -64,10 +81,13 @@ jobs:
           printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/aws_key.pem
           chmod 600 ~/.ssh/aws_key.pem
           ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no ubuntu@aitilmoch.duckdns.org \
-            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend"
+            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             "${APP_NAME}-windows.zip" \
             ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-windows.zip
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            RavonCaptions-windows.zip \
+            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-windows.zip
 
   build-mac:
     runs-on: macos-latest
@@ -99,12 +119,23 @@ jobs:
           jpackage --input jpackage-input \
             --name "$APP_NAME" \
             --main-jar Plugin-0.0.1-SNAPSHOT.jar \
-            --type dmg \
+            --type app-image \
             --dest jpackage-out \
             --app-version "$APP_VERSION" \
             --vendor "Uzbek AI Captions" \
             --app-content app-content
-          mv jpackage-out/*.dmg "${APP_NAME}-mac.dmg"
+          ditto -c -k --sequesterRsrc "jpackage-out/${APP_NAME}.app" "${APP_NAME}-mac.zip"
+
+      - name: Assemble combined installer (plugin + backend + one install script)
+        run: |
+          mkdir -p combined/plugin combined/backend
+          cp -R cep-extension/CSXS combined/plugin/CSXS
+          cp -R cep-extension/client combined/plugin/client
+          cp -R cep-extension/host combined/plugin/host
+          cp -R "jpackage-out/${APP_NAME}.app" "combined/backend/${APP_NAME}.app"
+          cp "installer/O'rnatish (Mac).command" combined/
+          chmod +x "combined/O'rnatish (Mac).command"
+          ditto -c -k --sequesterRsrc combined RavonCaptions-mac.zip
 
       - name: Upload to server
         env:
@@ -114,7 +145,10 @@ jobs:
           printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/aws_key.pem
           chmod 600 ~/.ssh/aws_key.pem
           ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no ubuntu@aitilmoch.duckdns.org \
-            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend"
+            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
-            "${APP_NAME}-mac.dmg" \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.dmg
+            "${APP_NAME}-mac.zip" \
+            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.zip
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            RavonCaptions-mac.zip \
+            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-mac.zip

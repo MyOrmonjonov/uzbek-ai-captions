@@ -173,6 +173,30 @@
   .dl-card .btn{width:100%;}
   .dl-note{font-size:12.5px;color:var(--text-dim);margin-top:14px;}
 
+  .install-card{
+    max-width:520px;margin:0 auto;background:var(--bg-elev);border:1px solid var(--border);
+    border-radius:20px;padding:34px;
+  }
+  .platform-toggle{display:flex;gap:10px;background:var(--bg-elev-2);border-radius:12px;padding:6px;margin-bottom:22px;}
+  .ptab{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:12px;border-radius:9px;border:none;background:transparent;color:var(--text-dim);
+    font-size:14.5px;font-weight:700;cursor:pointer;transition:background .15s,color .15s;font-family:inherit;
+  }
+  .ptab-active{background:var(--accent);color:#140f33;}
+  .install-btn{width:100%;padding:16px;font-size:16px;margin-bottom:26px;}
+  .install-steps{list-style:none;padding:0;margin:0 0 20px;counter-reset:ins;display:flex;flex-direction:column;gap:14px;}
+  .install-steps li{counter-increment:ins;font-size:14.5px;padding-left:34px;position:relative;}
+  .install-steps li::before{
+    content:counter(ins);position:absolute;left:0;top:-1px;
+    width:24px;height:24px;border-radius:7px;background:var(--accent-soft);color:var(--accent);
+    font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  }
+  .install-warn{
+    background:rgba(124,111,239,0.08);border:1px solid var(--border);border-radius:12px;
+    padding:14px 16px;font-size:13px;color:var(--text-dim);line-height:1.6;
+  }
+
   /* ---------- footer ---------- */
   footer{border-top:1px solid var(--border);padding:40px 0;}
   .foot-row{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;}
@@ -326,38 +350,60 @@
   <section id="yuklab-olish" class="wrap">
     <div class="section-head">
       <div class="kicker">Yuklab olish</div>
-      <h2>O'rnatish 2 qismdan iborat</h2>
-      <p>Backend dasturi (bir marta ishga tushiriladi) + Premiere panelining o'zi.</p>
+      <h2>Bitta bosishda o'rnating</h2>
+      <p>Backend va Premiere paneli birga — bitta paket, bitta o'rnatuvchi.</p>
     </div>
-    <div class="dl-grid">
-      <div class="dl-card">
-        <h3>🪟 Windows</h3>
-        <p class="hint">O'zida Java bilan keladi — alohida hech narsa o'rnatish shart emas.</p>
-        <ol class="dl-steps">
-          <li>Backend dasturini yuklab, .exe faylini ishga tushiring (fonda ishlab turadi)</li>
-          <li>Premiere plaginini yuklab, ZIP ichidagi <code>install.bat</code>ni ishga tushiring</li>
-          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Ravon Captions</li>
-        </ol>
-        <a class="btn btn-accent" href="https://aitilmoch.duckdns.org/backend/windows">Backend (.exe) yuklab olish</a>
-        <div style="height:10px"></div>
-        <a class="btn btn-ghost" href="https://aitilmoch.duckdns.org/plugin/download">Premiere plagini yuklab olish</a>
-        <p class="dl-note">Birinchi ishga tushirishda Windows "Noma'lum dasturchi" ogohlantirishi berishi mumkin — "Ko'proq ma'lumot" → "Baribir ishga tushirish"ni bosing.</p>
+    <div class="install-card">
+      <div class="platform-toggle">
+        <button type="button" class="ptab" data-platform="mac">🍎 Mac</button>
+        <button type="button" class="ptab ptab-active" data-platform="windows">🪟 Windows</button>
       </div>
-      <div class="dl-card">
-        <h3>🍎 macOS</h3>
-        <p class="hint">O'zida Java bilan keladi — alohida hech narsa o'rnatish shart emas.</p>
-        <ol class="dl-steps">
-          <li>Backend dasturini (.dmg) yuklab, oching va Applications'ga sudrab tashlang, ishga tushiring</li>
-          <li>Premiere plaginini yuklab, Terminal orqali <code>bash install.command</code> buyrug'ini ishga tushiring</li>
-          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Ravon Captions</li>
-        </ol>
-        <a class="btn btn-accent" href="https://aitilmoch.duckdns.org/backend/mac">Backend (.dmg) yuklab olish</a>
-        <div style="height:10px"></div>
-        <a class="btn btn-ghost" href="https://aitilmoch.duckdns.org/plugin/download">Premiere plagini yuklab olish</a>
-        <p class="dl-note">Birinchi ochishda macOS Gatekeeper ogohlantirishi berishi mumkin — Finder'da faylga o'ng tugma bilan bosib "Open"ni tanlang.</p>
+      <a id="install-btn" class="btn btn-accent install-btn" href="https://aitilmoch.duckdns.org/download/windows">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+        Yuklab olish
+      </a>
+      <ol class="install-steps">
+        <li>Yuklab olingan faylni oching — o'ng tugma → «Barchasini chiqarish» (Extract all)</li>
+        <li id="install-step2">«O'rnatish (Windows)» faylini 2 marta bosing</li>
+        <li>Premiere Pro yoki After Effects'ni yoping va qayta oching</li>
+        <li>Yuqori menyudan Window → Extensions → Ravon Captions'ni oching</li>
+      </ol>
+      <div class="install-warn" id="install-warn">
+        <strong>"Windows protected your PC"</strong> chiqsa → <strong>More info</strong> → <strong>Run anyway</strong>ni bosing. Fayl zararsiz.
       </div>
     </div>
   </section>
+
+  <script>
+    (function () {
+      var platforms = {
+        windows: {
+          url: 'https://aitilmoch.duckdns.org/download/windows',
+          step2: '«O\'rnatish (Windows)» faylini 2 marta bosing',
+          warn: '<strong>"Windows protected your PC"</strong> chiqsa → <strong>More info</strong> → <strong>Run anyway</strong>ni bosing. Fayl zararsiz.'
+        },
+        mac: {
+          url: 'https://aitilmoch.duckdns.org/download/mac',
+          step2: '«O\'rnatish (Mac)» faylini 2 marta bosing (yoki Terminal orqali <code>bash "O\'rnatish (Mac).command"</code>)',
+          warn: '<strong>"Noma\'lum dasturchi"</strong> ogohlantirishi chiqsa → faylga o\'ng tugma bilan bosib <strong>Open</strong>ni tanlang. Fayl zararsiz.'
+        }
+      };
+      var tabs = document.querySelectorAll('.ptab');
+      var btn = document.getElementById('install-btn');
+      var step2 = document.getElementById('install-step2');
+      var warn = document.getElementById('install-warn');
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          tabs.forEach(function (t) { t.classList.remove('ptab-active'); });
+          tab.classList.add('ptab-active');
+          var p = platforms[tab.dataset.platform];
+          btn.href = p.url;
+          step2.innerHTML = p.step2;
+          warn.innerHTML = p.warn;
+        });
+      });
+    })();
+  </script>
 
   <section class="wrap">
     <div class="cta-band">
