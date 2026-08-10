@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Uzbek AI Captions — Premiere Pro uchun AI subtitr generatori</title>
+<title>Ravon Captions — Premiere Pro uchun AI subtitr generatori</title>
 <meta name="description" content="Premiere Pro va After Effects uchun sun'iy intellekt subtitr generatori: so'z-aniq subtitrlar, 8 tilga tarjima, kinetic typography va B-roll takliflari.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230b0f0d%22/><text x=%2250%22 y=%2268%22 font-size=%2258%22 font-family=%22Arial,sans-serif%22 font-weight=%22800%22 fill=%22%233ecf72%22 text-anchor=%22middle%22>U</text></svg>">
+<link rel="icon" href="assets/logo.png">
 <style>
   :root{
-    --bg:#0b0f0d;
-    --bg-elev:#121712;
-    --bg-elev-2:#161d17;
-    --border:#223026;
-    --text:#eef3ef;
-    --text-dim:#9fb0a6;
-    --accent:#3ecf72;
-    --accent-dim:#2a9a54;
-    --accent-soft:rgba(62,207,114,0.12);
+    --bg:#0d0b1a;
+    --bg-elev:#161328;
+    --bg-elev-2:#1c1836;
+    --border:#2c2650;
+    --text:#eeecfb;
+    --text-dim:#a29cc4;
+    --accent:#7c6fef;
+    --accent-dim:#5b4fd1;
+    --accent-soft:rgba(124,111,239,0.16);
     --radius:14px;
     --maxw:1100px;
   }
@@ -37,13 +37,13 @@
   /* ---------- nav ---------- */
   header{
     position:sticky;top:0;z-index:50;
-    background:rgba(11,15,13,0.85);
+    background:rgba(13,11,26,0.85);
     backdrop-filter:blur(10px);
     border-bottom:1px solid var(--border);
   }
   nav.wrap{display:flex;align-items:center;justify-content:space-between;height:68px;}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;text-decoration:none;}
-  .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(155deg,var(--accent),var(--accent-dim));display:flex;align-items:center;justify-content:center;color:#06120a;font-weight:800;font-size:17px;flex-shrink:0;}
+  .brand .logo-img{width:34px;height:34px;border-radius:9px;flex-shrink:0;}
   .navlinks{display:flex;align-items:center;gap:28px;}
   .navlinks a{font-size:14.5px;color:var(--text-dim);text-decoration:none;transition:color .15s;}
   .navlinks a:hover{color:var(--text);}
@@ -55,8 +55,8 @@
     white-space:nowrap;
   }
   .btn:active{transform:scale(.97);}
-  .btn-accent{background:var(--accent);color:#06170d;}
-  .btn-accent:hover{background:#4fdc82;}
+  .btn-accent{background:var(--accent);color:#140f33;}
+  .btn-accent:hover{background:#9184f3;}
   .btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
   .btn-ghost:hover{border-color:var(--accent-dim);}
   .btn-sm{padding:8px 14px;font-size:13.5px;}
@@ -74,6 +74,7 @@
     content:"";position:absolute;inset:0;z-index:-1;
     background:radial-gradient(600px 300px at 50% -10%, var(--accent-soft), transparent 70%);
   }
+  .tagline{color:var(--text-dim);font-size:14.5px;font-weight:500;margin-bottom:14px;}
   .eyebrow{
     display:inline-flex;align-items:center;gap:8px;
     padding:6px 14px;border-radius:999px;
@@ -116,7 +117,7 @@
   @media (min-width:760px){.steps{grid-template-columns:repeat(3,1fr);}}
   .step{position:relative;padding:28px 22px 22px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);}
   .step .num{
-    width:32px;height:32px;border-radius:9px;background:var(--accent);color:#06170d;
+    width:32px;height:32px;border-radius:9px;background:var(--accent);color:#140f33;
     display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:16px;
   }
   .step h3{font-size:16px;margin:0 0 8px;font-weight:700;}
@@ -147,7 +148,7 @@
   .ptier-best{border-color:var(--accent-dim);background:linear-gradient(180deg,var(--bg-elev-2),var(--bg-elev));}
   .ptier-badge{
     position:absolute;top:-11px;left:50%;transform:translateX(-50%);
-    background:var(--accent);color:#06170d;font-size:11px;font-weight:800;
+    background:var(--accent);color:#140f33;font-size:11px;font-weight:800;
     padding:4px 10px;border-radius:999px;white-space:nowrap;
   }
   .ptier-name{font-size:14px;color:var(--text-dim);font-weight:600;}
@@ -193,8 +194,8 @@
 <header>
   <nav class="wrap">
     <a href="#" class="brand">
-      <span class="logo">U</span>
-      Uzbek AI Captions
+      <img src="assets/logo.png" alt="Ravon Captions" class="logo-img">
+      Ravon Captions
     </a>
     <div class="navlinks">
       <a href="#imkoniyatlar">Imkoniyatlar</a>
@@ -209,6 +210,8 @@
 <main>
 
   <section class="hero wrap">
+    <img src="assets/logo.png" alt="Ravon Captions" style="width:56px;height:56px;border-radius:14px;margin:0 auto 18px;">
+    <div class="tagline">So'zlar o'zi joyiga tushadi</div>
     <div class="eyebrow"><span class="dot"></span> Premiere Pro &amp; After Effects uchun</div>
     <h1>Videongizga <span>sun'iy intellekt</span> bilan<br>subtitr yozdiring — bir tugma bosish bilan</h1>
     <p class="sub">So'z-darajasida aniq vaqtlangan subtitrlar, 8 tilga avtomatik tarjima, animatsion (kinetic typography) matnlar va mos B-roll video takliflari — barchasi Premiere Pro panelining ichida.</p>
@@ -333,7 +336,7 @@
         <ol class="dl-steps">
           <li>Backend dasturini yuklab, .exe faylini ishga tushiring (fonda ishlab turadi)</li>
           <li>Premiere plaginini yuklab, ZIP ichidagi <code>install.bat</code>ni ishga tushiring</li>
-          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Uzbek AI Captions</li>
+          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Ravon Captions</li>
         </ol>
         <a class="btn btn-accent" href="https://aitilmoch.duckdns.org/backend/windows">Backend (.exe) yuklab olish</a>
         <div style="height:10px"></div>
@@ -346,7 +349,7 @@
         <ol class="dl-steps">
           <li>Backend dasturini (.dmg) yuklab, oching va Applications'ga sudrab tashlang, ishga tushiring</li>
           <li>Premiere plaginini yuklab, Terminal orqali <code>bash install.command</code> buyrug'ini ishga tushiring</li>
-          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Uzbek AI Captions</li>
+          <li>Premiere Pro'ni (qayta) oching — Window &gt; Extensions &gt; Ravon Captions</li>
         </ol>
         <a class="btn btn-accent" href="https://aitilmoch.duckdns.org/backend/mac">Backend (.dmg) yuklab olish</a>
         <div style="height:10px"></div>
@@ -369,8 +372,8 @@
 <footer>
   <div class="wrap foot-row">
     <a href="#" class="brand" style="display:flex;align-items:center;gap:8px;text-decoration:none;">
-      <span class="logo" style="width:26px;height:26px;font-size:13px;">U</span>
-      Uzbek AI Captions
+      <img src="assets/logo.png" alt="Ravon Captions" class="logo-img" style="width:26px;height:26px;">
+      Ravon Captions
     </a>
     <div class="foot-links">
       <a href="#imkoniyatlar">Imkoniyatlar</a>
