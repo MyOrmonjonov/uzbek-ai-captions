@@ -971,7 +971,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.0';
+    var PLUGIN_VERSION = '1.4.1';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
@@ -993,7 +993,7 @@
     // EXT_DIR) deliberately: CEP scans every subfolder of extensions\ for a CSXS/manifest.xml
     // and lists each as its own panel entry. A staged copy (a full package copy, complete
     // manifest included) sitting inside extensions\ got discovered as a second, ghost
-    // "Uzbek AI Captions" panel — Premiere's workspace remembered it as an open panel, then
+    // "Ravon Captions" panel — Premiere's workspace remembered it as an open panel, then
     // failed with ERR_FILE_NOT_FOUND once the staging dir was cleaned up. Living in the temp
     // dir instead means CEP never sees it as an extension at all.
     var UPD = {

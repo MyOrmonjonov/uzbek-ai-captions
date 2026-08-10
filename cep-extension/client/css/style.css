@@ -6,9 +6,9 @@
     --text: #e8e8e8;
     --text-muted: #9a9a9a;
     --text-faint: #6b6b6b;
-    --accent: #3ecf72;
-    --accent-strong: #52e085;
-    --accent-dim: #2d9e57;
+    --accent: #7c6fef;
+    --accent-strong: #9184f3;
+    --accent-dim: #5b4fd1;
     --success: #3ecf72;
     --success-bg: rgba(62, 207, 114, 0.12);
     --error: #ff6b6b;
@@ -143,15 +143,8 @@ body {
     width: 26px;
     height: 26px;
     border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--accent), var(--accent-dim));
-    color: #ffffff;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
     flex: 0 0 auto;
+    object-fit: cover;
 }
 
 .brand-text {
@@ -1158,16 +1151,6 @@ input[type="range"]::-moz-range-thumb {
 .license-badge.warn {
     background: var(--warn-bg);
     color: var(--warn);
-}
-
-/* Footer */
-
-.footer {
-    margin-top: auto;
-    padding-top: 12px;
-    text-align: center;
-    color: var(--text-faint);
-    font-size: 10px;
 }
 
 /* Update banner */

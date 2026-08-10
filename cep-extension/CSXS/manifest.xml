@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0" ExtensionBundleId="uz.uzbekaicaptions.panel"
-                    ExtensionBundleVersion="1.4.0"
-                    ExtensionBundleName="Uzbek AI Captions">
+                    ExtensionBundleVersion="1.4.1"
+                    ExtensionBundleName="Ravon Captions">
     <ExtensionList>
-        <Extension Id="uz.uzbekaicaptions.panel.main" Version="1.4.0" />
+        <Extension Id="uz.uzbekaicaptions.panel.main" Version="1.4.1" />
     </ExtensionList>
     <ExecutionEnvironment>
         <HostList>
@@ -33,7 +33,7 @@
                 </Lifecycle>
                 <UI>
                     <Type>Panel</Type>
-                    <Menu>Uzbek AI Captions</Menu>
+                    <Menu>Ravon Captions</Menu>
                     <Geometry>
                         <Size>
                             <Height>720</Height>

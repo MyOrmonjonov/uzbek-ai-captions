@@ -519,7 +519,7 @@ function importSrtAfterEffects(srtPath) {
 
     clearTrackedLayers(lastAeCaptionLayers);
 
-    app.beginUndoGroup("Uzbek AI Captions - subtitr");
+    app.beginUndoGroup("Ravon Captions - subtitr");
     try {
         var added = 0;
         // Natural speech always has a small pause between cues — holding each cue on screen

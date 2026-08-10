@@ -2,9 +2,9 @@
 setlocal
 
 set "SRC=%~dp0"
-set "DEST=%APPDATA%\Adobe\CEP\extensions\uzbek-ai-captions"
+set "DEST=%APPDATA%\Adobe\CEP\extensions\ravon-captions"
 
-echo Uzbek AI Captions kengaytmasi o'rnatilmoqda...
+echo Ravon Captions kengaytmasi o'rnatilmoqda...
 
 if not exist "%DEST%" mkdir "%DEST%"
 
@@ -20,10 +20,8 @@ echo.
 echo O'rnatildi: %DEST%
 echo.
 echo Keyingi qadamlar:
-echo   1. run-server.bat ni ishga tushiring (D:\Plugin papkasida)
+echo   1. UzbekAiCaptionsBackend dasturini ishga tushiring
 echo   2. Premiere Pro yoki After Effects'ni oching (agar ochiq bo'lsa, qayta oching)
-echo   3. Window ^> Extensions ^> Uzbek AI Captions
-echo.
-echo Eslatma: ffmpeg PATH'da bo'lishi kerak (yoki backend konfiguratsiyasida yo'li ko'rsatilgan bo'lishi kerak).
+echo   3. Window ^> Extensions ^> Ravon Captions
 echo.
 pause

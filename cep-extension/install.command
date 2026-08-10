@@ -7,9 +7,9 @@
 set -e
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST="$HOME/Library/Application Support/Adobe/CEP/extensions/uzbek-ai-captions"
+DEST="$HOME/Library/Application Support/Adobe/CEP/extensions/ravon-captions"
 
-echo "Uzbek AI Captions kengaytmasi o'rnatilmoqda..."
+echo "Ravon Captions kengaytmasi o'rnatilmoqda..."
 
 mkdir -p "$DEST"
 rm -rf "$DEST/CSXS" "$DEST/client" "$DEST/host"
@@ -27,6 +27,6 @@ echo
 echo "Keyingi qadamlar:"
 echo "  1. UzbekAiCaptionsBackend dasturini (alohida yuklab olingan) ishga tushiring"
 echo "  2. Premiere Pro yoki After Effects'ni oching (agar ochiq bo'lsa, qayta oching)"
-echo "  3. Window > Extensions > Uzbek AI Captions"
+echo "  3. Window > Extensions > Ravon Captions"
 echo
 read -p "Davom etish uchun Enter bosing..."
