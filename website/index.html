@@ -17,8 +17,12 @@
     --accent:#7c6fef;
     --accent-dim:#5b4fd1;
     --accent-soft:rgba(124,111,239,0.16);
+    --glass:linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+    --glass-border:rgba(255,255,255,0.09);
+    --glass-hover-border:rgba(255,255,255,0.16);
     --radius:14px;
     --maxw:1100px;
+    --ease:cubic-bezier(.16,1,.3,1);
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
@@ -29,36 +33,84 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     line-height:1.55;
     -webkit-font-smoothing:antialiased;
+    position:relative;
+    overflow-x:hidden;
   }
   a{color:inherit;}
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;position:relative;}
   img,svg{display:block;max-width:100%;}
+  svg{stroke-linecap:round;stroke-linejoin:round;}
+
+  /* ---------- ambient background: soft white/lavender glow blobs mixed into the dark base ---------- */
+  .bg-blobs{position:fixed;inset:0;z-index:-3;overflow:hidden;pointer-events:none;}
+  .bg-blobs span{position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;}
+  .bg-blobs .b1{
+    width:520px;height:520px;top:-180px;left:8%;
+    background:radial-gradient(circle,rgba(255,255,255,0.16),rgba(124,111,239,0.10) 55%,transparent 72%);
+    animation:drift1 22s ease-in-out infinite;
+  }
+  .bg-blobs .b2{
+    width:460px;height:460px;top:12%;right:-120px;
+    background:radial-gradient(circle,rgba(124,111,239,0.30),transparent 70%);
+    animation:drift2 26s ease-in-out infinite;
+  }
+  .bg-blobs .b3{
+    width:600px;height:600px;bottom:-260px;left:22%;
+    background:radial-gradient(circle,rgba(255,255,255,0.10),rgba(91,79,209,0.16) 50%,transparent 72%);
+    animation:drift1 30s ease-in-out infinite reverse;
+  }
+  @keyframes drift1{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(40px,30px) scale(1.08);}}
+  @keyframes drift2{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-35px,40px) scale(1.06);}}
+  @media (prefers-reduced-motion:reduce){
+    .bg-blobs span{animation:none;}
+  }
+
+  /* ---------- scroll-reveal motion ---------- */
+  .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s var(--ease),transform .8s var(--ease);}
+  .reveal.in-view{opacity:1;transform:translateY(0);}
+  @media (prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none;}
+  }
 
   /* ---------- nav ---------- */
   header{
     position:sticky;top:0;z-index:50;
-    background:rgba(13,11,26,0.85);
-    backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--border);
+    background:rgba(13,11,26,0.72);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
+    border-bottom:1px solid var(--glass-border);
+    transition:background .3s;
   }
   nav.wrap{display:flex;align-items:center;justify-content:space-between;height:68px;}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;text-decoration:none;}
-  .brand .logo-img{width:34px;height:34px;border-radius:9px;flex-shrink:0;}
+  .brand .logo-img{width:34px;height:34px;border-radius:9px;flex-shrink:0;transition:transform .35s var(--ease);}
+  .brand:hover .logo-img{transform:rotate(-6deg) scale(1.06);}
   .navlinks{display:flex;align-items:center;gap:28px;}
-  .navlinks a{font-size:14.5px;color:var(--text-dim);text-decoration:none;transition:color .15s;}
+  .navlinks a{font-size:14.5px;color:var(--text-dim);text-decoration:none;transition:color .15s;position:relative;}
+  .navlinks a:not(.btn)::after{
+    content:"";position:absolute;left:0;bottom:-4px;width:0;height:1.5px;background:var(--accent);
+    transition:width .25s var(--ease);
+  }
+  .navlinks a:not(.btn):hover::after{width:100%;}
   .navlinks a:hover{color:var(--text);}
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:8px;
     padding:11px 20px;border-radius:10px;font-weight:600;font-size:14.5px;
     text-decoration:none;border:1px solid transparent;cursor:pointer;
-    transition:transform .15s, background .15s, border-color .15s;
-    white-space:nowrap;
+    transition:transform .25s var(--ease), box-shadow .25s var(--ease), background .15s, border-color .15s;
+    white-space:nowrap;position:relative;overflow:hidden;isolation:isolate;
   }
   .btn:active{transform:scale(.97);}
-  .btn-accent{background:var(--accent);color:#140f33;}
-  .btn-accent:hover{background:#9184f3;}
-  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
-  .btn-ghost:hover{border-color:var(--accent-dim);}
+  .btn-accent{background:var(--accent);color:#140f33;box-shadow:0 8px 24px -8px rgba(124,111,239,0.7);}
+  .btn-accent:hover{background:#9184f3;transform:translateY(-2px);box-shadow:0 14px 32px -10px rgba(124,111,239,0.85);}
+  .btn-accent::after{
+    content:"";position:absolute;inset:0;z-index:1;
+    background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.45) 48%,transparent 66%);
+    transform:translateX(-120%);
+  }
+  .btn-accent:hover::after{transform:translateX(120%);transition:transform .7s var(--ease);}
+  .btn-ghost{background:rgba(255,255,255,0.03);color:var(--text);border-color:var(--glass-border);backdrop-filter:blur(8px);}
+  .btn-ghost:hover{border-color:var(--accent-dim);background:rgba(124,111,239,0.08);transform:translateY(-2px);}
   .btn-sm{padding:8px 14px;font-size:13.5px;}
   .navlinks .btn{margin-left:8px;}
   .navlinks-mobile-toggle{display:none;}
@@ -72,18 +124,34 @@
   .hero{padding:96px 0 72px;text-align:center;position:relative;overflow:hidden;}
   .hero::before{
     content:"";position:absolute;inset:0;z-index:-1;
-    background:radial-gradient(600px 300px at 50% -10%, var(--accent-soft), transparent 70%);
+    background:radial-gradient(650px 340px at 50% -10%, rgba(124,111,239,0.28), transparent 70%);
   }
+  @keyframes fadeUp{from{opacity:0;transform:translateY(22px);}to{opacity:1;transform:translateY(0);}}
+  .hero > *{animation:fadeUp .8s var(--ease) both;}
+  .hero > img{animation-delay:.02s;}
+  .hero > .tagline{animation-delay:.08s;}
+  .hero > .eyebrow{animation-delay:.14s;}
+  .hero > h1{animation-delay:.2s;}
+  .hero > .sub{animation-delay:.28s;}
+  .hero > .hero-actions{animation-delay:.36s;}
+  .hero > .platform-note{animation-delay:.44s;}
+  @media (prefers-reduced-motion:reduce){.hero > *{animation:none;}}
   .tagline{color:var(--text-dim);font-size:14.5px;font-weight:500;margin-bottom:14px;}
   .eyebrow{
     display:inline-flex;align-items:center;gap:8px;
     padding:6px 14px;border-radius:999px;
-    background:var(--bg-elev);border:1px solid var(--border);
+    background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);backdrop-filter:blur(8px);
     color:var(--accent);font-size:13px;font-weight:600;margin-bottom:24px;
   }
-  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);animation:pulseDot 2s ease-in-out infinite;}
+  @keyframes pulseDot{0%,100%{opacity:1;}50%{opacity:.4;}}
   h1{font-size:clamp(32px,5vw,54px);line-height:1.12;font-weight:800;margin:0 0 20px;letter-spacing:-0.02em;}
-  h1 span{color:var(--accent);}
+  h1 span{
+    background:linear-gradient(135deg,var(--accent),#c2b8ff 55%,var(--accent));
+    background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:shineText 5s linear infinite;
+  }
+  @keyframes shineText{to{background-position:200% center;}}
   .hero p.sub{
     max-width:620px;margin:0 auto 36px;color:var(--text-dim);font-size:18px;
   }
@@ -102,23 +170,38 @@
   .features{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
   @media (min-width:820px){.features{grid-template-columns:repeat(4,1fr);}}
   .feature-card{
-    background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);
-    padding:26px 22px;
+    background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);
+    padding:26px 22px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s var(--ease);
+  }
+  .feature-card:hover{
+    transform:translateY(-6px);border-color:var(--glass-hover-border);
+    box-shadow:0 24px 48px -24px rgba(124,111,239,0.55);
   }
   .feature-icon{
-    width:44px;height:44px;border-radius:10px;background:var(--accent-soft);
-    display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--accent);
+    width:48px;height:48px;border-radius:14px;
+    background:linear-gradient(155deg,rgba(124,111,239,0.35),rgba(124,111,239,0.08));
+    border:1px solid rgba(124,111,239,0.35);
+    display:flex;align-items:center;justify-content:center;margin-bottom:18px;color:var(--accent);
+    transition:transform .35s var(--ease);
   }
+  .feature-card:hover .feature-icon{transform:scale(1.08) rotate(-4deg);}
   .feature-card h3{font-size:16.5px;margin:0 0 8px;font-weight:700;}
   .feature-card p{font-size:14px;color:var(--text-dim);margin:0;}
 
   /* ---------- how it works ---------- */
   .steps{display:grid;grid-template-columns:1fr;gap:20px;counter-reset:step;}
   @media (min-width:760px){.steps{grid-template-columns:repeat(3,1fr);}}
-  .step{position:relative;padding:28px 22px 22px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);}
+  .step{
+    position:relative;padding:28px 22px 22px;background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:var(--radius);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s var(--ease);
+  }
+  .step:hover{transform:translateY(-6px);border-color:var(--glass-hover-border);box-shadow:0 24px 48px -24px rgba(124,111,239,0.5);}
   .step .num{
     width:32px;height:32px;border-radius:9px;background:var(--accent);color:#140f33;
     display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:16px;
+    box-shadow:0 8px 20px -6px rgba(124,111,239,0.7);
   }
   .step h3{font-size:16px;margin:0 0 8px;font-weight:700;}
   .step p{font-size:14px;color:var(--text-dim);margin:0;}
@@ -142,14 +225,22 @@
   .pricing-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:900px;margin:0 auto;}
   @media (min-width:820px){.pricing-grid{grid-template-columns:repeat(4,1fr);}}
   .ptier{
-    position:relative;background:var(--bg-elev);border:1px solid var(--border);border-radius:16px;
+    position:relative;background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
     padding:26px 20px;text-align:center;display:flex;flex-direction:column;gap:14px;
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s var(--ease);
   }
-  .ptier-best{border-color:var(--accent-dim);background:linear-gradient(180deg,var(--bg-elev-2),var(--bg-elev));}
+  .ptier:hover{transform:translateY(-6px);border-color:var(--glass-hover-border);box-shadow:0 24px 48px -24px rgba(124,111,239,0.5);}
+  .ptier-best{
+    border-color:var(--accent-dim);
+    background:linear-gradient(180deg,rgba(124,111,239,0.14),rgba(124,111,239,0.04));
+    box-shadow:0 0 0 1px rgba(124,111,239,0.25),0 24px 48px -24px rgba(124,111,239,0.6);
+  }
   .ptier-badge{
     position:absolute;top:-11px;left:50%;transform:translateX(-50%);
     background:var(--accent);color:#140f33;font-size:11px;font-weight:800;
     padding:4px 10px;border-radius:999px;white-space:nowrap;
+    box-shadow:0 6px 16px -4px rgba(124,111,239,0.8);
   }
   .ptier-name{font-size:14px;color:var(--text-dim);font-weight:600;}
   .ptier-price{font-size:22px;font-weight:800;}
@@ -174,16 +265,17 @@
   .dl-note{font-size:12.5px;color:var(--text-dim);margin-top:14px;}
 
   .install-card{
-    max-width:520px;margin:0 auto;background:var(--bg-elev);border:1px solid var(--border);
-    border-radius:20px;padding:34px;
+    max-width:520px;margin:0 auto;background:var(--glass);border:1px solid var(--glass-border);
+    border-radius:20px;padding:34px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    box-shadow:0 30px 60px -30px rgba(0,0,0,0.5);
   }
-  .platform-toggle{display:flex;gap:10px;background:var(--bg-elev-2);border-radius:12px;padding:6px;margin-bottom:22px;}
+  .platform-toggle{display:flex;gap:10px;background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:12px;padding:6px;margin-bottom:22px;}
   .ptab{
     flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
     padding:12px;border-radius:9px;border:none;background:transparent;color:var(--text-dim);
-    font-size:14.5px;font-weight:700;cursor:pointer;transition:background .15s,color .15s;font-family:inherit;
+    font-size:14.5px;font-weight:700;cursor:pointer;transition:background .25s var(--ease),color .25s,transform .25s var(--ease);font-family:inherit;
   }
-  .ptab-active{background:var(--accent);color:#140f33;}
+  .ptab-active{background:var(--accent);color:#140f33;box-shadow:0 8px 20px -6px rgba(124,111,239,0.7);}
   .install-btn{width:100%;padding:16px;font-size:16px;margin-bottom:26px;}
   .install-steps{list-style:none;padding:0;margin:0 0 20px;counter-reset:ins;display:flex;flex-direction:column;gap:14px;}
   .install-steps li{counter-increment:ins;font-size:14.5px;padding-left:34px;position:relative;}
@@ -197,6 +289,19 @@
     padding:14px 16px;font-size:13px;color:var(--text-dim);line-height:1.6;
   }
 
+  /* ---------- stagger delays for grid reveal ---------- */
+  .features .feature-card:nth-child(1){transition-delay:.05s;}
+  .features .feature-card:nth-child(2){transition-delay:.12s;}
+  .features .feature-card:nth-child(3){transition-delay:.19s;}
+  .features .feature-card:nth-child(4){transition-delay:.26s;}
+  .steps .step:nth-child(1){transition-delay:.05s;}
+  .steps .step:nth-child(2){transition-delay:.14s;}
+  .steps .step:nth-child(3){transition-delay:.23s;}
+  .pricing-grid .ptier:nth-child(1){transition-delay:.05s;}
+  .pricing-grid .ptier:nth-child(2){transition-delay:.12s;}
+  .pricing-grid .ptier:nth-child(3){transition-delay:.19s;}
+  .pricing-grid .ptier:nth-child(4){transition-delay:.26s;}
+
   /* ---------- footer ---------- */
   footer{border-top:1px solid var(--border);padding:40px 0;}
   .foot-row{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;}
@@ -206,14 +311,21 @@
   .foot-links a:hover{color:var(--text);}
 
   .cta-band{
-    background:var(--bg-elev);border:1px solid var(--border);border-radius:20px;
-    padding:48px 32px;text-align:center;
+    background:var(--glass);border:1px solid var(--glass-border);border-radius:20px;
+    padding:48px 32px;text-align:center;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    position:relative;overflow:hidden;
+  }
+  .cta-band::before{
+    content:"";position:absolute;inset:0;z-index:-1;
+    background:radial-gradient(400px 200px at 50% 0%,rgba(124,111,239,0.25),transparent 70%);
   }
   .cta-band h2{margin-bottom:10px;}
   .cta-band p{color:var(--text-dim);margin:0 0 26px;}
 </style>
 </head>
 <body>
+
+<div class="bg-blobs"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
 
 <header>
   <nav class="wrap">
@@ -250,36 +362,36 @@
   </section>
 
   <section id="imkoniyatlar" class="wrap">
-    <div class="section-head">
+    <div class="section-head reveal">
       <div class="kicker">Imkoniyatlar</div>
       <h2>Subtitr yaratishning eng qulay yo'li</h2>
       <p>Har bir funksiya video muharrirlarning haqiqiy ehtiyojidan kelib chiqib qurilgan.</p>
     </div>
     <div class="features">
-      <div class="feature-card">
+      <div class="feature-card reveal">
         <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v-1.5M8 12V7M12 12V4M16 12V7.5M20 12v-1"/><path d="M4 14v1.5M8 14v4M12 14v7M16 14v3.5M20 14v1"/></svg>
         </div>
         <h3>So'z-aniq subtitr</h3>
         <p>Whisper asosidagi transkripsiya har bir so'zning aniq vaqtini beradi — taxmin emas, kadr darajasida aniqlik.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card reveal">
         <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M9 2v3M22 22l-5-10-5 10M14 18h6"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg>
         </div>
         <h3>8 tilga tarjima</h3>
         <p>Ingliz, rus, turk, qozoq, arab, xitoy, fransuz, nemis — video tilidan avtomatik tarjima qilinadi.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card reveal">
         <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l2.5 7L5 18M12 4l2.5 7L12 18"/><path d="M19 9l1.8 3L19 15" opacity=".55"/></svg>
         </div>
         <h3>Kinetic Typography</h3>
         <p>So'z-so'z animatsion matnlar — ijtimoiy tarmoq video formatlariga mos, professional ko'rinish.</p>
       </div>
-      <div class="feature-card">
+      <div class="feature-card reveal">
         <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="6" width="14" height="12" rx="2"/><path d="M3 9v9a2 2 0 002 2h9" opacity=".55"/><circle cx="12" cy="11" r="1.6"/><path d="M9 18l3.5-4 2.5 2.8L18 13l3 4"/></svg>
         </div>
         <h3>B-roll takliflari</h3>
         <p>Video mazmuniga mos stock video, rasm va GIF'lar avtomatik topiladi va bir bosishda qo'shiladi.</p>
@@ -288,22 +400,22 @@
   </section>
 
   <section id="qanday-ishlaydi" class="wrap">
-    <div class="section-head">
+    <div class="section-head reveal">
       <div class="kicker">Qanday ishlaydi</div>
       <h2>3 qadamda tayyor</h2>
     </div>
     <div class="steps">
-      <div class="step">
+      <div class="step reveal">
         <div class="num">1</div>
         <h3>O'rnating</h3>
         <p>Backend dasturi va Premiere panelini yuklab, o'rnatuvchi skriptni ishga tushiring.</p>
       </div>
-      <div class="step">
+      <div class="step reveal">
         <div class="num">2</div>
         <h3>Videongizni tanlang</h3>
         <p>Premiere'da sequence'ni oching, panelda "Subtitr yaratish"ni bosing.</p>
       </div>
-      <div class="step">
+      <div class="step reveal">
         <div class="num">3</div>
         <h3>Tayyor</h3>
         <p>Subtitr avtomatik generatsiya qilinadi — kerak bo'lsa tarjima, animatsiya yoki B-roll qo'shing.</p>
@@ -312,28 +424,28 @@
   </section>
 
   <section id="narxlar" class="wrap">
-    <div class="section-head">
+    <div class="section-head reveal">
       <div class="kicker">Narxlar</div>
       <h2>O'zingizga mos muddatni tanlang</h2>
       <p>Barcha tariflarda bir xil imkoniyatlar — faqat muddat farq qiladi.</p>
     </div>
     <div class="pricing-grid">
-      <div class="ptier">
+      <div class="ptier reveal">
         <div class="ptier-name">1 oy</div>
         <div class="ptier-price">99,000<span> so'm</span></div>
         <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
       </div>
-      <div class="ptier">
+      <div class="ptier reveal">
         <div class="ptier-name">3 oy</div>
         <div class="ptier-price">239,000<span> so'm</span></div>
         <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
       </div>
-      <div class="ptier">
+      <div class="ptier reveal">
         <div class="ptier-name">6 oy</div>
         <div class="ptier-price">499,000<span> so'm</span></div>
         <a href="https://t.me/ravoncaptions_bot" class="btn btn-ghost" target="_blank" rel="noopener">Sotib olish</a>
       </div>
-      <div class="ptier ptier-best">
+      <div class="ptier ptier-best reveal">
         <div class="ptier-badge">Eng foydali</div>
         <div class="ptier-name">1 yil</div>
         <div class="ptier-price">599,000<span> so'm</span></div>
@@ -348,12 +460,12 @@
   </section>
 
   <section id="yuklab-olish" class="wrap">
-    <div class="section-head">
+    <div class="section-head reveal">
       <div class="kicker">Yuklab olish</div>
       <h2>Bitta bosishda o'rnating</h2>
       <p>Backend va Premiere paneli birga — bitta paket, bitta o'rnatuvchi.</p>
     </div>
-    <div class="install-card">
+    <div class="install-card reveal">
       <div class="platform-toggle">
         <button type="button" class="ptab" data-platform="mac">🍎 Mac</button>
         <button type="button" class="ptab ptab-active" data-platform="windows">🪟 Windows</button>
@@ -374,39 +486,8 @@
     </div>
   </section>
 
-  <script>
-    (function () {
-      var platforms = {
-        windows: {
-          url: 'https://aitilmoch.duckdns.org/download/windows',
-          step2: '«O\'rnatish (Windows)» faylini 2 marta bosing',
-          warn: '<strong>"Windows protected your PC"</strong> chiqsa → <strong>More info</strong> → <strong>Run anyway</strong>ni bosing. Fayl zararsiz.'
-        },
-        mac: {
-          url: 'https://aitilmoch.duckdns.org/download/mac',
-          step2: '«O\'rnatish (Mac)» faylini 2 marta bosing (yoki Terminal orqali <code>bash "O\'rnatish (Mac).command"</code>)',
-          warn: '<strong>"Noma\'lum dasturchi"</strong> ogohlantirishi chiqsa → faylga o\'ng tugma bilan bosib <strong>Open</strong>ni tanlang. Fayl zararsiz.'
-        }
-      };
-      var tabs = document.querySelectorAll('.ptab');
-      var btn = document.getElementById('install-btn');
-      var step2 = document.getElementById('install-step2');
-      var warn = document.getElementById('install-warn');
-      tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () {
-          tabs.forEach(function (t) { t.classList.remove('ptab-active'); });
-          tab.classList.add('ptab-active');
-          var p = platforms[tab.dataset.platform];
-          btn.href = p.url;
-          step2.innerHTML = p.step2;
-          warn.innerHTML = p.warn;
-        });
-      });
-    })();
-  </script>
-
   <section class="wrap">
-    <div class="cta-band">
+    <div class="cta-band reveal">
       <h2>Savolingiz bormi?</h2>
       <p>To'g'ridan-to'g'ri Telegram orqali yozing — tez orada javob beramiz.</p>
       <a href="https://t.me/ravoncaptions_bot" class="btn btn-accent" target="_blank" rel="noopener" style="display:inline-flex;">Telegram'da yozish</a>
@@ -414,6 +495,55 @@
   </section>
 
 </main>
+
+<script>
+  (function () {
+    var platforms = {
+      windows: {
+        url: 'https://aitilmoch.duckdns.org/download/windows',
+        step2: '«O\'rnatish (Windows)» faylini 2 marta bosing',
+        warn: '<strong>"Windows protected your PC"</strong> chiqsa → <strong>More info</strong> → <strong>Run anyway</strong>ni bosing. Fayl zararsiz.'
+      },
+      mac: {
+        url: 'https://aitilmoch.duckdns.org/download/mac',
+        step2: '«O\'rnatish (Mac)» faylini 2 marta bosing (yoki Terminal orqali <code>bash "O\'rnatish (Mac).command"</code>)',
+        warn: '<strong>"Noma\'lum dasturchi"</strong> ogohlantirishi chiqsa → faylga o\'ng tugma bilan bosib <strong>Open</strong>ni tanlang. Fayl zararsiz.'
+      }
+    };
+    var tabs = document.querySelectorAll('.ptab');
+    var btn = document.getElementById('install-btn');
+    var step2 = document.getElementById('install-step2');
+    var warn = document.getElementById('install-warn');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.classList.remove('ptab-active'); });
+        tab.classList.add('ptab-active');
+        var p = platforms[tab.dataset.platform];
+        btn.href = p.url;
+        step2.innerHTML = p.step2;
+        warn.innerHTML = p.warn;
+      });
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in-view'); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in-view');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  })();
+</script>
 
 <footer>
   <div class="wrap foot-row">
