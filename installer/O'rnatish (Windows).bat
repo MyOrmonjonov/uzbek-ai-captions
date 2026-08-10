@@ -24,11 +24,16 @@ if not exist "%BACKEND_DEST%" mkdir "%BACKEND_DEST%"
 xcopy /E /I /Y "%SRC%backend" "%BACKEND_DEST%" >nul
 
 REM --- 3) Windows kirganda avtomatik ishga tushirish ---
-powershell -NoProfile -Command ^
-  "$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP%\RavonCaptionsBackend.lnk'); ^
-   $s.TargetPath='%BACKEND_DEST%\UzbekAiCaptionsBackend.exe'; ^
-   $s.WorkingDirectory='%BACKEND_DEST%'; ^
-   $s.Save()" >nul 2>&1
+REM (PowerShell -Command'ga bir necha qatorli buyruqni "^" bilan bo'lib berish
+REM  cmd/PowerShell tirnoq ichida ishonchsiz ekani sinovda tasdiqlandi — shuning
+REM  uchun buyruq vaqtinchalik .ps1 fayl orqali, -File bilan ishga tushiriladi.)
+set "PS1=%TEMP%\ravon-captions-shortcut.ps1"
+> "%PS1%" echo $s = (New-Object -COM WScript.Shell).CreateShortcut('%STARTUP%\RavonCaptionsBackend.lnk')
+>> "%PS1%" echo $s.TargetPath = '%BACKEND_DEST%\UzbekAiCaptionsBackend.exe'
+>> "%PS1%" echo $s.WorkingDirectory = '%BACKEND_DEST%'
+>> "%PS1%" echo $s.Save()
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" >nul 2>&1
+del "%PS1%" >nul 2>&1
 
 REM --- 4) Hoziroq ishga tushirish (fonda, konsolsiz) ---
 start "" "%BACKEND_DEST%\UzbekAiCaptionsBackend.exe"
