@@ -23,6 +23,17 @@
     box-sizing: border-box;
 }
 
+/* Several elements below (.btn, .update-banner, .kinetic-pagination, .broll-filter-bar, ...)
+   set an unconditional `display` in their class rule. An author-stylesheet display declaration
+   always wins over the browser's default `[hidden] { display: none }` UA rule regardless of
+   selector specificity (origin beats specificity in the cascade) — so plain `el.hidden = true`
+   never actually hid any element carrying one of those classes; they stayed visible the whole
+   time. This single override re-asserts display:none whenever the hidden attribute is present,
+   for every element, present or future — the standard fix for this exact pitfall. */
+[hidden] {
+    display: none !important;
+}
+
 html, body {
     height: 100%;
     overflow-x: hidden;

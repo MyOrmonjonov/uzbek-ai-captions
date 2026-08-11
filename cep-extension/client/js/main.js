@@ -984,7 +984,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.4';
+    var PLUGIN_VERSION = '1.4.5';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
