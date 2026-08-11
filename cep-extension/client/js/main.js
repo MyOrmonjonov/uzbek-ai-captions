@@ -984,7 +984,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.3';
+    var PLUGIN_VERSION = '1.4.4';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
@@ -1152,42 +1152,21 @@
         }
     }
 
-    var pendingUpdateVersion = '';
+    // No user action required anymore: checkForUpdate() stages a newer version by itself as
+    // soon as it finds one, and this banner is purely informational (dismiss-only) — it used to
+    // have a "Yangilash" button the user had to click to kick off stageUpdate(), but that meant
+    // a customer who never noticed/clicked it just stayed on a broken/outdated build. The button
+    // markup stays in index.html (removing it risks the exact kind of JS/HTML mismatch that
+    // broke 1.4.2 — see the 1.4.3 fix above) but is hidden at boot since nothing wires it up now.
+    els.updateBannerBtn.hidden = true;
 
-    function showUpdateBanner(version) {
-        els.updateBannerText.textContent = "Yangi versiya (" + version + ") mavjud";
+    function showUpdateNotice(text) {
+        els.updateBannerText.textContent = text;
         els.updateBanner.hidden = false;
-        pendingUpdateVersion = version;
     }
 
     els.updateBannerDismiss.addEventListener('click', function () {
         els.updateBanner.hidden = true;
-    });
-
-    els.updateBannerBtn.addEventListener('click', function () {
-        // Panel ochilgandan beri boshqa yo'l bilan (masalan install.bat) allaqachon shu
-        // versiyaga yangilangan bo'lishi mumkin — bunday holda foydalanuvchiga "xato"
-        // ko'rsatish o'rniga bannerni jimgina yashiramiz.
-        if (!isNewerVersion(pendingUpdateVersion, PLUGIN_VERSION)) {
-            els.updateBanner.hidden = true;
-            return;
-        }
-        els.updateBannerBtn.disabled = true;
-        els.updateBannerBtn.textContent = 'Yuklanmoqda...';
-        stageUpdate(pendingUpdateVersion).then(function (version) {
-            els.updateBannerText.textContent = "Yuklandi (" + version + ") — Premiere'ni yopib qayta oching.";
-            els.updateBannerBtn.hidden = true;
-        }).catch(function (e) {
-            els.updateBannerBtn.disabled = false;
-            els.updateBannerBtn.textContent = 'Yangilash';
-            var msg = e.message || String(e);
-            if (msg.indexOf('yangi emas') !== -1) {
-                els.updateBannerText.textContent = 'Allaqachon eng oxirgi versiyadasiz.';
-                els.updateBannerBtn.hidden = true;
-            } else {
-                els.updateBannerText.textContent = 'Yangilab bo\'lmadi: ' + msg;
-            }
-        });
     });
 
     function checkForUpdate() {
@@ -1204,7 +1183,12 @@
                     try {
                         var data = JSON.parse(Buffer.concat(chunks).toString());
                         if (data.latestVersion && isNewerVersion(data.latestVersion, PLUGIN_VERSION)) {
-                            showUpdateBanner(data.latestVersion);
+                            // Stage it immediately, no click required. Failures (offline mid-download,
+                            // server hiccup) are silent here — next boot's checkForUpdate() retries on
+                            // its own, and there's nothing the user could actionably do about it anyway.
+                            stageUpdate(data.latestVersion).then(function (version) {
+                                showUpdateNotice("Yangi versiya (" + version + ") o'rnatildi — Premiere'ni yopib qayta ochsangiz faollashadi.");
+                            }).catch(function () { /* will retry on next boot */ });
                         }
                     } catch (e) { /* malformed response — skip silently, not critical */ }
                 });
