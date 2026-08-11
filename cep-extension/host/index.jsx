@@ -151,6 +151,33 @@ function getActiveMediaPath() {
     }
 }
 
+/**
+ * Duration of the main video track's actual content (last clip's end, in seconds) — used by the
+ * panel to trim transcription results that run past the real video, since
+ * exportActiveSequenceAudio() exports the entire sequence (its duration is driven by the latest
+ * clip on ANY track, so leftover clips elsewhere can make the exported audio — and therefore any
+ * generated subtitles — longer than the actual video). Premiere only; returns "0" for AE or on
+ * any failure, which callers treat as "don't trim".
+ */
+function getMainVideoDurationSeconds() {
+    try {
+        if (BridgeTalk.appName !== "premierepro" || !app.project || !app.project.activeSequence) {
+            return "0";
+        }
+        var track = app.project.activeSequence.videoTracks[0];
+        var maxEnd = 0;
+        for (var i = 0; i < track.clips.numItems; i++) {
+            var end = track.clips[i].end.seconds;
+            if (end > maxEnd) {
+                maxEnd = end;
+            }
+        }
+        return String(maxEnd);
+    } catch (e) {
+        return "0";
+    }
+}
+
 function importSrt(srtPath, sourceMediaPath, mogrtFolder) {
     try {
         if (BridgeTalk.appName === "premierepro") {

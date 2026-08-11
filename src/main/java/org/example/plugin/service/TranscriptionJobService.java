@@ -71,11 +71,13 @@ public class TranscriptionJobService {
         volatile String error;
     }
 
-    public String submit(Path sourcePath, int maxLines, int wordsPerLine, String translateTo) {
+    public String submit(Path sourcePath, int maxLines, int wordsPerLine, String translateTo,
+                          Double expectedDurationSeconds) {
         String jobId = UUID.randomUUID().toString();
         JobState state = new JobState();
         jobs.put(jobId, state);
-        workExecutor.submit(() -> run(jobId, state, sourcePath, maxLines, wordsPerLine, translateTo));
+        workExecutor.submit(() -> run(jobId, state, sourcePath, maxLines, wordsPerLine, translateTo,
+                expectedDurationSeconds));
         return jobId;
     }
 
@@ -95,7 +97,8 @@ public class TranscriptionJobService {
         return view;
     }
 
-    private void run(String jobId, JobState state, Path sourcePath, int maxLines, int wordsPerLine, String translateTo) {
+    private void run(String jobId, JobState state, Path sourcePath, int maxLines, int wordsPerLine,
+                      String translateTo, Double expectedDurationSeconds) {
         Path sessionDir = null;
         Path wavPath = null;
         ScheduledFuture<?> ticker = null;
@@ -125,6 +128,7 @@ public class TranscriptionJobService {
 
             TranscriptionResult result = transcribeWordAccurate(wavPath, translateTo);
             ticker.cancel(false);
+            result = trimToExpectedDuration(result, expectedDurationSeconds);
 
             if (result.words().isEmpty() && result.segments().isEmpty()) {
                 state.status = "error";
@@ -176,6 +180,34 @@ public class TranscriptionJobService {
             LOG.log(Level.WARNING, "Whisper transcription failed, falling back to Gemini", e);
             return geminiTranscriptionService.transcribe(wavPath, null);
         }
+    }
+
+    // Small buffer so a word/cue that legitimately starts right at the video's own end isn't
+    // clipped by floating-point/frame-rounding differences between how the panel computed the
+    // main video track's last clip end and how Whisper timestamped speech near it.
+    private static final double DURATION_TRIM_TOLERANCE_SECONDS = 0.5;
+
+    /**
+     * The panel exports audio for the ENTIRE sequence (exportActiveSequenceAudio() in
+     * host/index.jsx, workAreaType 0) rather than just the main video track's span — sequence
+     * duration in Premiere is driven by the latest clip on ANY track, so leftover clips further
+     * out on other tracks (e.g. from a previous "Subtitr yaratish"/B-roll/kinetic-text run, or
+     * anything else placed past the main video) stretch the exported audio, and therefore the
+     * generated SRT, past where the actual video ends — a customer reported exactly this
+     * ("subtitr vaqtini sequence'dan ko'p qilib yuboradi"). expectedDurationSeconds (computed
+     * client-side from the main video track's own last clip end — see host/index.jsx's
+     * getMainVideoDurationSeconds()) lets this drop anything transcribed past that point instead
+     * of changing the export itself, which would mean calling into untested Premiere in/out-point
+     * scripting APIs.
+     */
+    private static TranscriptionResult trimToExpectedDuration(TranscriptionResult result, Double expectedDurationSeconds) {
+        if (expectedDurationSeconds == null || expectedDurationSeconds <= 0) {
+            return result;
+        }
+        double limit = expectedDurationSeconds + DURATION_TRIM_TOLERANCE_SECONDS;
+        return new TranscriptionResult(
+                result.words().stream().filter(w -> w.start() < limit).toList(),
+                result.segments().stream().filter(s -> s.start() < limit).toList());
     }
 
     /** Reads a WAV file's duration straight from its header (sample count / sample rate) — used only to pace the progress estimate, not for correctness. Returns 0 on any parse failure. */

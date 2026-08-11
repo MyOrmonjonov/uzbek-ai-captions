@@ -73,7 +73,8 @@ public class TranscribeController {
             return badRequest("Fayl topilmadi: " + request.filePath());
         }
 
-        String jobId = jobService.submit(sourcePath, maxLines, wordsPerLine, translateTo);
+        String jobId = jobService.submit(sourcePath, maxLines, wordsPerLine, translateTo,
+                request.expectedDurationSeconds());
         return ResponseEntity.ok(new JobIdResponse(jobId));
     }
 

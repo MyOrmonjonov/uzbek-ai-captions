@@ -51,6 +51,23 @@
         });
     }
 
+    /**
+     * The main video track's actual content duration (host/index.jsx's
+     * getMainVideoDurationSeconds()), sent along with the transcribe request so the backend can
+     * drop any words/cues transcribed past it — exportSequenceAudioForTranscribe() exports the
+     * whole sequence, whose duration is driven by the latest clip on ANY track, so leftover
+     * clips elsewhere can make the audio (and therefore generated subtitles) longer than the
+     * actual video. Resolves to null (meaning "don't trim") on AE or any failure.
+     */
+    function getMainVideoDurationSeconds() {
+        return new Promise(function (resolve) {
+            csInterface.evalScript('getMainVideoDurationSeconds()', function (result) {
+                var seconds = parseFloat(result);
+                resolve(!isNaN(seconds) && seconds > 0 ? seconds : null);
+            });
+        });
+    }
+
     // Placing MOGRT clips into the Premiere project (insertKineticText/insertCaptionMogrt) has
     // real per-word/per-cue cost with no way to make it instant — this at least turns a long
     // silent wait into visible progress, dispatched from the host script via CSXSEvent.
@@ -400,14 +417,16 @@
             var translateTo = translateOn ? els.translateLang.value : null;
             var exportedWavPath = null;
 
-            exportSequenceAudioForTranscribe()
-            .then(function (wavPath) {
+            Promise.all([exportSequenceAudioForTranscribe(), getMainVideoDurationSeconds()])
+            .then(function (results) {
+                var wavPath = results[0];
                 exportedWavPath = wavPath;
                 return startTranscribeJob({
                     filePath: wavPath,
                     maxLines: maxLines,
                     wordsPerLine: wordsPerLine,
                     translateTo: translateTo,
+                    expectedDurationSeconds: results[1],
                 });
             })
             .then(function (body) {
@@ -482,14 +501,16 @@
         var translateTo = translateOn ? els.translateLang.value : null;
         var exportedWavPath = null;
 
-        exportSequenceAudioForTranscribe()
-        .then(function (wavPath) {
+        Promise.all([exportSequenceAudioForTranscribe(), getMainVideoDurationSeconds()])
+        .then(function (results) {
+            var wavPath = results[0];
             exportedWavPath = wavPath;
             return startTranscribeJob({
                 filePath: wavPath,
                 maxLines: maxLines,
                 wordsPerLine: wordsPerLine,
                 translateTo: translateTo,
+                expectedDurationSeconds: results[1],
             });
         })
         .then(function (body) {
@@ -1045,7 +1066,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.9';
+    var PLUGIN_VERSION = '1.4.10';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
