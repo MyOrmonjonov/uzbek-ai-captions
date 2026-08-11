@@ -30,16 +30,31 @@ PROMPT_TEMPLATE = """Quyida video subtitrining segmentlari (vaqt va matn) berilg
 Vazifang ikki bosqichli:
 1. Butun videoni ketma-ket, bir-biriga ustma-ust tushmaydigan eng ko'pi bilan {max_scenes} ta
    "sahna"ga bo'l.
-2. Har bir sahna uchun — matnni yuzaki emas, DIQQAT BILAN o'qib, sahna ASL MA'NODA nima haqida
-   ekanini (mavzusini) chuqur tushunib ol, keyin aynan o'sha mavzuga OG'ZAKI EMAS, VIZUAL jihatdan
-   mos keladigan stock-video kadrini tasvirlaydigan 2-4 so'zli INGLIZCHA qidiruv so'z birikmasi
-   (keyword) top. O'zingga savol ber: "video ekranida aynan nima ko'rinishi kerak, bu matn shu
-   haqida gapirganda?" — keyword shu savolga javob bo'lsin, matndagi so'zlarning tarjimasi emas.
+2. Har bir sahna uchun ikkita INGLIZCHA qidiruv so'z birikmasi top: `keyword` (aniq) va
+   `fallback_keyword` (kengroq, zaxira). Buning uchun — matnni yuzaki emas, DIQQAT BILAN o'qib,
+   sahna ASL MA'NODA nima haqida ekanini (mavzusini) chuqur tushunib ol, keyin aynan o'sha
+   mavzuga OG'ZAKI EMAS, VIZUAL jihatdan mos keladigan stock-video kadrini tasvirlaydigan
+   2-4 so'zli birikma top. O'zingga savol ber: "video ekranida aynan nima ko'rinishi kerak, bu
+   matn shu haqida gapirganda?" — keyword shu savolga javob bo'lsin, matndagi so'zlarning
+   tarjimasi emas.
+
+MUHIM — tor/ilmiy/tibbiy/texnik mavzular haqida: stock-video kutubxonalarida (Pexels/Giphy)
+kasallik nomlari, ilmiy atamalar, texnik jarayonlar kabi narsalar uchun deyarli hech qachon
+maxsus video bo'lmaydi — literal nom bilan qidirish deyarli har doim 0 yoki butunlay aloqasiz
+natija beradi. Shuning uchun bunday mavzular uchun `keyword`ning o'zi ham darhol UMUMIY, keng
+tarqalgan, kutubxonada haqiqatan mavjud bo'lgan vizual toifaga o'girilishi SHART — mavzu nomining
+o'zi emas:
+- "Gepatit B" / boshqa kasallik nomi → "doctor medical checkup" yoki "hospital examination"
+  yoki "blood test laboratory" (kasallikning o'zi emas, tibbiy kontekst ko'rinadi)
+- ilmiy/texnik atama (masalan "fotosintez", "protokol") → shu sohaning umumiy vizual muhiti
+  (masalan "science laboratory research", "computer server room")
+`fallback_keyword` esa `keyword`dan HAM kengroq, deyarli har doim natija beradigan umumiy toifa
+bo'lsin (masalan mavzu tibbiy bo'lsa — "doctor hospital", ilmiy bo'lsa — "science research").
 
 Qoidalar:
 - Sahnalar birinchi segment boshidan oxirgi segment oxirigacha bo'lgan
   butun davrni qamrab olsin, oraliqlarda bo'shliq yoki ustma-ustlik bo'lmasin.
-- keyword aniq, konkret va vizual jihatdan qidirsa bo'ladigan narsa bo'lsin
+- Har ikkala keyword ham aniq, konkret va vizual jihatdan qidirsa bo'ladigan narsa bo'lsin
   (masalan "city traffic jam", "ocean waves sunset", "person typing laptop office"),
   mavhum tushuncha, hissiyot nomi yoki so'zma-so'z tarjima emas — sahna nimani KO'RSATISHI
   kerakligini tasvirla, nimani AYTAYOTGANINI emas.
@@ -47,7 +62,7 @@ Qoidalar:
   shu fikrga eng yaqin, haqiqiy hayotda suratga olinishi mumkin bo'lgan vizual sahnani tanla
   (masalan "muvaffaqiyat" haqida gap ketsa — "person celebrating success").
 - Natijani FAQAT JSON massiv sifatida qaytar, boshqa matn yoki izohsiz:
-  [{{"start": 0.0, "end": 12.5, "keyword": "..."}}, ...]
+  [{{"start": 0.0, "end": 12.5, "keyword": "...", "fallback_keyword": "..."}}, ...]
 
 Segmentlar:
 {segment_list}
@@ -61,8 +76,9 @@ RESPONSE_SCHEMA = {
             "start": {"type": "NUMBER"},
             "end": {"type": "NUMBER"},
             "keyword": {"type": "STRING"},
+            "fallback_keyword": {"type": "STRING"},
         },
-        "required": ["start", "end", "keyword"],
+        "required": ["start", "end", "keyword", "fallback_keyword"],
     },
 }
 
@@ -101,9 +117,10 @@ def group_into_scenes(segments: list[dict]) -> list[dict]:
         keyword = str(item.get("keyword", "")).strip()
         if not keyword:
             continue
+        fallback_keyword = str(item.get("fallback_keyword", "")).strip()
         start = float(item["start"])
         end = max(float(item["end"]), start)
-        scenes.append({"start": start, "end": end, "keyword": keyword})
+        scenes.append({"start": start, "end": end, "keyword": keyword, "fallback_keyword": fallback_keyword})
     return scenes
 
 
@@ -171,13 +188,32 @@ def _pick_pexels_file(files: list[dict]) -> dict | None:
     return best_sd or narrowest
 
 
-async def pick_candidates(session: aiohttp.ClientSession, keyword: str) -> list[dict]:
+# Below this many results for a given type, the primary keyword is treated as too narrow (the
+# "Gepatit B" case: a specific/technical/medical keyword that stock libraries just don't carry)
+# and topped up with fallback_keyword's results for that same type.
+MIN_RESULTS_BEFORE_FALLBACK = 5
+
+
+async def _search_type_with_fallback(search_fn, session: aiohttp.ClientSession,
+                                      keyword: str, fallback_keyword: str) -> list[dict]:
+    results = await search_fn(session, keyword, CANDIDATES_PER_TYPE)
+    if len(results) >= MIN_RESULTS_BEFORE_FALLBACK or not fallback_keyword or fallback_keyword == keyword:
+        return results
+    seen = {r["mediaUrl"] for r in results}
+    more = await search_fn(session, fallback_keyword, CANDIDATES_PER_TYPE - len(results))
+    results.extend(r for r in more if r["mediaUrl"] not in seen)
+    return results
+
+
+async def pick_candidates(session: aiohttp.ClientSession, keyword: str, fallback_keyword: str = "") -> list[dict]:
     """Each type is fetched and capped independently (not a shared total) — mirrors
     BrollController.pickCandidates()'s reasoning: whenever a type has matches at all, the
-    panel's per-type grid gets a full CANDIDATES_PER_TYPE to lay out as two columns."""
-    videos = await _search_pexels_videos(session, keyword, CANDIDATES_PER_TYPE)
-    photos = await _search_pexels_photos(session, keyword, CANDIDATES_PER_TYPE)
-    gifs = await _search_giphy_gifs(session, keyword, CANDIDATES_PER_TYPE)
+    panel's per-type grid gets a full CANDIDATES_PER_TYPE to lay out as two columns. Falls back
+    to a broader keyword per-type when the primary one is too sparse (see
+    MIN_RESULTS_BEFORE_FALLBACK)."""
+    videos = await _search_type_with_fallback(_search_pexels_videos, session, keyword, fallback_keyword)
+    photos = await _search_type_with_fallback(_search_pexels_photos, session, keyword, fallback_keyword)
+    gifs = await _search_type_with_fallback(_search_giphy_gifs, session, keyword, fallback_keyword)
     return videos + photos + gifs
 
 
@@ -187,7 +223,7 @@ async def suggestions_for_segments(segments: list[dict]) -> list[dict]:
     results = []
     async with aiohttp.ClientSession() as session:
         for scene in scenes:
-            candidates = await pick_candidates(session, scene["keyword"])
+            candidates = await pick_candidates(session, scene["keyword"], scene.get("fallback_keyword", ""))
             if candidates:
                 results.append({**scene, "candidates": candidates})
     return results
