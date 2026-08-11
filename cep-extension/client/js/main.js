@@ -111,6 +111,7 @@
         mainContent: document.getElementById('main-content'),
         deviceCodeText: document.getElementById('device-code-text'),
         copyCodeBtn: document.getElementById('copy-code-btn'),
+        openBotBtn: document.getElementById('open-bot-btn'),
         tokenInput: document.getElementById('token-input'),
         activateBtn: document.getElementById('activate-btn'),
         activationStatus: document.getElementById('activation-status'),
@@ -782,6 +783,18 @@
         }
     });
 
+    // Opens the bot with the device code as a "?start=" deep-link payload (bot.py reads
+    // it via CommandObject and feeds it straight into the same device-code handling
+    // on_device_code uses for a pasted code) so the user doesn't have to copy/paste the
+    // code by hand into the chat.
+    els.openBotBtn.addEventListener('click', function () {
+        var code = els.deviceCodeText.textContent;
+        if (!code || code === '...') {
+            return;
+        }
+        csInterface.openURLInDefaultBrowser('https://t.me/ravoncaptions_bot?start=' + encodeURIComponent(code));
+    });
+
     els.activateBtn.addEventListener('click', function () {
         var token = els.tokenInput.value.trim();
         if (!token) {
@@ -971,7 +984,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.1';
+    var PLUGIN_VERSION = '1.4.2';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
