@@ -1,17 +1,22 @@
 #!/bin/bash
-# Copies cep-extension into a build output directory with client/js/main.js and
-# host/index.jsx obfuscated (javascript-obfuscator) so a customer who unzips the
-# distributed plugin can't just read the source and clone it. Everything else
-# (HTML/CSS/manifest/mogrt assets — not meaningfully "clonable" the same way, and CEP
-# needs the HTML/manifest to stay as literal markup it can parse) is copied as-is.
+# Copies cep-extension into a build output directory with client/js/main.js obfuscated
+# (javascript-obfuscator) so a customer who unzips the distributed plugin can't just read
+# the source and clone it. Everything else (HTML/CSS/manifest/mogrt assets — not
+# meaningfully "clonable" the same way, and CEP needs the HTML/manifest to stay as literal
+# markup it can parse — plus host/index.jsx, see below) is copied as-is.
 #
-# Settings are deliberately conservative: control-flow-flattening/dead-code-injection/
-# self-defending are OFF. Those transforms assume a modern JS engine; host/index.jsx runs
-# in Premiere's ExtendScript engine (ES3-ish), and self-defending in particular actively
-# breaks under non-eval-friendly or unusual execution contexts. Verified (see commit
-# message) that the obfuscated output contains no arrow functions / let / const / classes
-# / template literals — only var/function, which is what index.jsx already used
-# throughout. Still, this has NOT been run inside real Premiere — test before relying on it.
+# host/index.jsx is intentionally left UNOBFUSCATED (just copied as-is below) — it runs in
+# Premiere's ExtendScript engine, a genuinely old (ES3-ish) JS engine, not a browser/Node
+# context. It was obfuscated here for a while with conservative settings (no control-flow-
+# flattening/dead-code-injection/self-defending, verified to emit no arrow functions / let /
+# const / classes / template literals), but that was never actually confirmed working inside
+# real Premiere, and a customer report of getActiveMediaPath()'s evalScript callback never
+# firing at all — even after a 70s retry budget, for a function that does no I/O and should
+# return near-instantly — points at the obfuscated host script silently failing to load in
+# ExtendScript (which would mean nothing in that file is ever defined, so no evalScript call
+# to it could ever get a real response). client/js/main.js runs in a normal CEF/Node context
+# and stays obfuscated — its execution is well confirmed working through everything else that
+# depends on it.
 #
 # Usage: obfuscate-plugin.sh <source_cep_extension_dir> <dest_dir>
 set -e
@@ -42,13 +47,6 @@ cp -R "$SRC/." "$DEST/"
 
 npx --yes javascript-obfuscator@5.5.0 "$DEST/client/js/main.js" --output "$DEST/client/js/main.js" "${OBF_ARGS[@]}"
 
-# CLI requires a .js/.mjs/.cjs extension for both input AND output — output to a temp .js
-# name (an --output path ending in .jsx makes the CLI treat it as an output *directory*,
-# which collides with the index.jsx file already sitting there from the cp -R above) and
-# mv the result over the real index.jsx afterward.
-cp "$DEST/host/index.jsx" "$DEST/host/index_obf_tmp.js"
-npx --yes javascript-obfuscator@5.5.0 "$DEST/host/index_obf_tmp.js" --output "$DEST/host/index_obf_tmp.out.js" "${OBF_ARGS[@]}"
-rm "$DEST/host/index_obf_tmp.js" "$DEST/host/index.jsx"
-mv "$DEST/host/index_obf_tmp.out.js" "$DEST/host/index.jsx"
+# host/index.jsx is deliberately left as the plain cp -R copy above — see the header comment.
 
 echo "Obfuscated plugin build written to: $DEST"
