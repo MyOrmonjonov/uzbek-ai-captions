@@ -9,6 +9,15 @@ PLIST="$HOME/Library/LaunchAgents/uz.ravoncaptions.backend.plist"
 echo "Ravon Captions o'rnatilmoqda..."
 echo
 
+# --- 0) Eski backend jarayonini to'xtatish ---
+# Backend kompyuterga kirganda avtomatik ishga tushadi (pastdagi LaunchAgent orqali), shuning
+# uchun qayta o'rnatishda deyarli har doim allaqachon ishlab turadi. Eski nusxa fayl darajasida
+# almashtirilsa ham (rm -rf + cp -R macOS'da ishlayotgan .app ustida ham ishlaydi), eski
+# jarayon xotirada davom etib, yangi nusxa ishga tushganda bir xil portni band qilib qo'yishi
+# mumkin — shu sabab avval majburan to'xtatiladi.
+pkill -f "UzbekAiCaptionsBackend" 2>/dev/null || true
+sleep 1
+
 # --- 1) Premiere/AE panelini o'rnatish ---
 mkdir -p "$CEP_DEST"
 rm -rf "$CEP_DEST/CSXS" "$CEP_DEST/client" "$CEP_DEST/host"

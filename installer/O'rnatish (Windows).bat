@@ -9,6 +9,16 @@ set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo Ravon Captions o'rnatilmoqda...
 echo.
 
+REM --- 0) Eski backend jarayonini to'xtatish ---
+REM Backend Windows kirganda avtomatik ishga tushadi (pastdagi Startup yorlig'i orqali), shuning
+REM uchun qayta o'rnatishda deyarli har doim allaqachon ishlab turadi. Windows ishlab turgan
+REM .exe faylini almashtirishga ruxsat bermaydi (yoki jimgina o'tkazib yuboradi) — shu sabab
+REM oldingi versiyada "qayta o'rnatilgan" fayllar aslida yozilmay qolib, mijoz bilmagan holda
+REM eski (buzilgan) backend'ni ishlatishda davom etardi. Endi fayllarni ustidan yozishdan oldin
+REM eski jarayon majburan to'xtatiladi.
+taskkill /IM UzbekAiCaptionsBackend.exe /F >nul 2>&1
+timeout /t 2 /nobreak >nul 2>&1
+
 REM --- 1) Premiere/AE panelini o'rnatish ---
 if not exist "%CEP_DEST%" mkdir "%CEP_DEST%"
 xcopy /E /I /Y "%SRC%plugin\CSXS" "%CEP_DEST%\CSXS" >nul
