@@ -1,11 +1,12 @@
 name: Build backend installers
 
-# Manual trigger only: this builds the desktop backend (Java, bundled with its own JRE and a
-# static ffmpeg via jpackage) for both Windows and macOS, then uploads each package to the AWS
-# server so the website's download buttons and any future in-app "backend update" check always
-# serve whatever this workflow last produced. jpackage can only target the OS it runs on (no
-# cross-compiling a macOS package from a Windows machine), which is the whole reason this needs
-# CI rather than a local build script.
+# Runs automatically on every push to master that touches the plugin/backend source, and can
+# still be triggered by hand (workflow_dispatch). Builds the desktop backend (Java, bundled with
+# its own JRE and a static ffmpeg via jpackage) for both Windows and macOS, then uploads each
+# package to the AWS server so the website's download buttons and the in-app update checks
+# always serve whatever this workflow last produced. jpackage can only target the OS it runs on
+# (no cross-compiling a macOS package from a Windows machine), which is the whole reason this
+# needs CI rather than a local build script.
 #
 # Each job also assembles a single combined installer (cep-extension + the backend app-image +
 # installer/"O'rnatish (…)" — copies the plugin into Adobe's CEP folder, installs the backend to
@@ -14,8 +15,27 @@ name: Build backend installers
 # downloads. Before assembling, scripts/obfuscate-plugin.sh runs against a copy of
 # cep-extension/ so the shipped client/js/main.js and host/index.jsx aren't plainly readable
 # straight out of the downloaded ZIP — the checked-in source stays untouched.
+#
+# The build-windows job additionally packages just the obfuscated cep-extension/ (as
+# uzbek-ai-captions.zip, plus a VERSION file read from CSXS/manifest.xml's
+# ExtensionBundleVersion) and uploads both to srt_bot/plugin-release/ — this is the separate
+# in-panel auto-update path (main.js: checkForUpdate()/stageUpdate(), served by
+# srt_bot/plugin_release.py's GET /plugin/version and /plugin/download), which already-installed
+# users hit without ever visiting the website. It only needs building once (it's not
+# OS-specific), hence living in the Windows job rather than being duplicated in the Mac job.
 on:
   workflow_dispatch: {}
+  push:
+    branches: [master]
+    paths:
+      - "cep-extension/**"
+      - "src/**"
+      - "pom.xml"
+      - "mvnw"
+      - "mvnw.cmd"
+      - "installer/**"
+      - "scripts/obfuscate-plugin.sh"
+      - ".github/workflows/build-backend.yml"
 
 env:
   APP_NAME: UzbekAiCaptionsBackend
@@ -78,6 +98,22 @@ jobs:
           Copy-Item "installer/O'rnatish (Windows).bat" combined/
           Compress-Archive -Path combined/* -DestinationPath RavonCaptions-windows.zip -Force
 
+      - name: Package plugin auto-update zip (for already-installed users, not the website)
+        shell: pwsh
+        run: |
+          $manifest = Get-Content cep-extension-obf/CSXS/manifest.xml -Raw
+          if ($manifest -notmatch 'ExtensionBundleVersion="([^"]+)"') {
+            throw "ExtensionBundleVersion not found in manifest.xml"
+          }
+          $version = $Matches[1]
+          Set-Content -Path VERSION -Value $version -NoNewline -Encoding utf8
+
+          New-Item -ItemType Directory -Force -Path plugin-zip/uzbek-ai-captions | Out-Null
+          Copy-Item cep-extension-obf/CSXS plugin-zip/uzbek-ai-captions/CSXS -Recurse
+          Copy-Item cep-extension-obf/client plugin-zip/uzbek-ai-captions/client -Recurse
+          Copy-Item cep-extension-obf/host plugin-zip/uzbek-ai-captions/host -Recurse
+          Compress-Archive -Path plugin-zip/uzbek-ai-captions -DestinationPath uzbek-ai-captions.zip -Force
+
       - name: Upload to server
         shell: bash
         env:
@@ -94,6 +130,9 @@ jobs:
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             RavonCaptions-windows.zip \
             ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-windows.zip
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            uzbek-ai-captions.zip VERSION \
+            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/
 
   build-mac:
     runs-on: macos-latest
