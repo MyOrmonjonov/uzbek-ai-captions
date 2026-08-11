@@ -239,26 +239,82 @@
         els.kineticToggle.disabled = isBusy;
     }
 
+    // csi.evalScript()'s callback is the ONLY thing that ever updates #file-path-text away from
+    // its static "Video aniqlanmoqda..." placeholder — if that callback never fires (a slow/not
+    // yet fully initialized ExtendScript engine right after Premiere opens the panel, or any
+    // other CEP-side hiccup) the panel was stuck on that placeholder forever with zero feedback
+    // and no way to tell it apart from "still working". A customer reported exactly this. Now a
+    // per-attempt timeout retries a few times, then surfaces a real, actionable error instead of
+    // silently hanging — turning an invisible hang into something the refresh button can recover
+    // from, and something a bug report can actually describe.
     function detectActiveMedia(callback) {
         var csi = new CSInterface();
-        csi.evalScript('getActiveMediaPath()', function (result) {
-            if (result && result.indexOf('ERROR:') === 0) {
-                selectedFile = null;
-                els.filePathText.textContent = result.replace(/^ERROR:\s*/, '');
-                els.filePath.className = 'file-card error';
-                els.brollBtn.hidden = true;
-                els.kineticBtn.hidden = true;
-            } else {
-                selectedFile = result;
-                els.filePathText.textContent = result;
-                els.filePath.className = 'file-card';
-                els.brollBtn.hidden = false;
-                els.kineticBtn.hidden = false;
-            }
+        var attempt = 0;
+        var maxAttempts = 3;
+        var timeoutMs = 6000;
+
+        function fail(text) {
+            selectedFile = null;
+            els.filePathText.textContent = text;
+            els.filePath.className = 'file-card error';
+            els.brollBtn.hidden = true;
+            els.kineticBtn.hidden = true;
             if (callback) {
                 callback();
             }
-        });
+        }
+
+        function attemptDetect() {
+            attempt++;
+            var settled = false;
+            var timeoutId = setTimeout(function () {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (attempt < maxAttempts) {
+                    attemptDetect();
+                } else {
+                    fail("Video aniqlab bo'lmadi (javob kelmadi). Qayta urinish (⟳) tugmasini bosing.");
+                }
+            }, timeoutMs);
+
+            csi.evalScript('getActiveMediaPath()', function (result) {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timeoutId);
+
+                if (!result) {
+                    if (attempt < maxAttempts) {
+                        attemptDetect();
+                        return;
+                    }
+                    fail("Video aniqlab bo'lmadi (bo'sh javob). Qayta urinish (⟳) tugmasini bosing.");
+                    return;
+                }
+
+                if (result.indexOf('ERROR:') === 0) {
+                    selectedFile = null;
+                    els.filePathText.textContent = result.replace(/^ERROR:\s*/, '');
+                    els.filePath.className = 'file-card error';
+                    els.brollBtn.hidden = true;
+                    els.kineticBtn.hidden = true;
+                } else {
+                    selectedFile = result;
+                    els.filePathText.textContent = result;
+                    els.filePath.className = 'file-card';
+                    els.brollBtn.hidden = false;
+                    els.kineticBtn.hidden = false;
+                }
+                if (callback) {
+                    callback();
+                }
+            });
+        }
+
+        attemptDetect();
     }
 
     var TRANSCRIBE_STAGE_LABELS = {
@@ -984,7 +1040,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.5';
+    var PLUGIN_VERSION = '1.4.6';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
