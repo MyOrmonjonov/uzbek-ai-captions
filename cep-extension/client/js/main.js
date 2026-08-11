@@ -240,18 +240,19 @@
     }
 
     // csi.evalScript()'s callback is the ONLY thing that ever updates #file-path-text away from
-    // its static "Video aniqlanmoqda..." placeholder — if that callback never fires (a slow/not
-    // yet fully initialized ExtendScript engine right after Premiere opens the panel, or any
-    // other CEP-side hiccup) the panel was stuck on that placeholder forever with zero feedback
-    // and no way to tell it apart from "still working". A customer reported exactly this. Now a
-    // per-attempt timeout retries a few times, then surfaces a real, actionable error instead of
-    // silently hanging — turning an invisible hang into something the refresh button can recover
-    // from, and something a bug report can actually describe.
+    // its static "Video aniqlanmoqda..." placeholder — if that callback never fires the panel is
+    // stuck on that placeholder forever with zero feedback, indistinguishable from "still
+    // working". A customer hit exactly this with a video they'd just dropped into the project.
+    // Premiere's ExtendScript engine is single-threaded and runs synchronously with the rest of
+    // the app — a large/just-added clip can still be importing/indexing for a while, and every
+    // evalScript call queues up silently behind that until it finishes; an 18s budget (3x6s)
+    // wasn't enough to rule that out, so this now backs off across a much longer window (5s, 10s,
+    // 20s, 35s — 70s total) before giving up, and the final message names that as the likely
+    // cause instead of implying the plugin itself is broken.
     function detectActiveMedia(callback) {
         var csi = new CSInterface();
         var attempt = 0;
-        var maxAttempts = 3;
-        var timeoutMs = 6000;
+        var timeoutsMs = [5000, 10000, 20000, 35000];
 
         function fail(text) {
             selectedFile = null;
@@ -265,19 +266,22 @@
         }
 
         function attemptDetect() {
+            var thisTimeout = timeoutsMs[attempt];
             attempt++;
+            var isLastAttempt = attempt >= timeoutsMs.length;
             var settled = false;
             var timeoutId = setTimeout(function () {
                 if (settled) {
                     return;
                 }
                 settled = true;
-                if (attempt < maxAttempts) {
+                if (!isLastAttempt) {
                     attemptDetect();
                 } else {
-                    fail("Video aniqlab bo'lmadi (javob kelmadi). Qayta urinish (⟳) tugmasini bosing.");
+                    fail("Video aniqlab bo'lmadi (javob kelmadi). Premiere hali band bo'lishi mumkin " +
+                        "(masalan katta video import qilinayotgan bo'lsa) — biroz kutib, Qayta urinish (⟳) tugmasini bosing.");
                 }
-            }, timeoutMs);
+            }, thisTimeout);
 
             csi.evalScript('getActiveMediaPath()', function (result) {
                 if (settled) {
@@ -287,7 +291,7 @@
                 clearTimeout(timeoutId);
 
                 if (!result) {
-                    if (attempt < maxAttempts) {
+                    if (!isLastAttempt) {
                         attemptDetect();
                         return;
                     }
@@ -1040,7 +1044,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.6';
+    var PLUGIN_VERSION = '1.4.7';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
