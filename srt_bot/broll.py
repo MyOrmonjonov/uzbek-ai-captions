@@ -15,26 +15,37 @@ from google.genai import types
 import config
 
 MAX_SCENES = 8
-CANDIDATES_PER_TYPE = 2
+CANDIDATES_PER_TYPE = 50
 
-# Flash-Lite: this only extracts English search keywords from already-transcribed text (no
-# audio understanding needed) — same reasoning as spelling_correction.py's model choice.
-# gemini-2.5-flash-lite 404'd for this key (see gemini_transcriber.py's note) — verified
-# gemini-3.5-flash-lite actually works before switching.
-MODEL_NAME = "gemini-3.5-flash-lite"
+# Was Flash-Lite (cheaper, "no audio understanding needed" reasoning) but a customer reported
+# B-roll results were often completely unrelated to the actual scene ("umuman boshqa narsalarni
+# olib kelyapti"). Understanding what a scene is actually ABOUT from Uzbek text well enough to
+# pick a precise, visually-searchable English keyword is not the trivial task the Lite tier was
+# chosen for — it's the same kind of comprehension gemini_transcriber.py already pays for the
+# full Flash tier over Lite to get right. Matching that choice here.
+MODEL_NAME = "gemini-3.5-flash"
 
 PROMPT_TEMPLATE = """Quyida video subtitrining segmentlari (vaqt va matn) berilgan, o'zbek tilida.
-Vazifang: butun videoni ketma-ket, bir-biriga ustma-ust tushmaydigan
-eng ko'pi bilan {max_scenes} ta "sahna"ga bo'lish va har bir sahna uchun shu qism
-qanday mavzuda ekanini tasvirlaydigan, stock-video qidiruvi uchun mos
-2-3 so'zli INGLIZCHA kalit so'z (keyword) topish.
+
+Vazifang ikki bosqichli:
+1. Butun videoni ketma-ket, bir-biriga ustma-ust tushmaydigan eng ko'pi bilan {max_scenes} ta
+   "sahna"ga bo'l.
+2. Har bir sahna uchun — matnni yuzaki emas, DIQQAT BILAN o'qib, sahna ASL MA'NODA nima haqida
+   ekanini (mavzusini) chuqur tushunib ol, keyin aynan o'sha mavzuga OG'ZAKI EMAS, VIZUAL jihatdan
+   mos keladigan stock-video kadrini tasvirlaydigan 2-4 so'zli INGLIZCHA qidiruv so'z birikmasi
+   (keyword) top. O'zingga savol ber: "video ekranida aynan nima ko'rinishi kerak, bu matn shu
+   haqida gapirganda?" — keyword shu savolga javob bo'lsin, matndagi so'zlarning tarjimasi emas.
 
 Qoidalar:
 - Sahnalar birinchi segment boshidan oxirgi segment oxirigacha bo'lgan
   butun davrni qamrab olsin, oraliqlarda bo'shliq yoki ustma-ustlik bo'lmasin.
-- keyword umumiy, vizual jihatdan qidirsa bo'ladigan narsa bo'lsin
-  (masalan "city traffic", "ocean waves", "person typing laptop"),
-  shaxsiy ism yoki mavhum tushunchalar emas.
+- keyword aniq, konkret va vizual jihatdan qidirsa bo'ladigan narsa bo'lsin
+  (masalan "city traffic jam", "ocean waves sunset", "person typing laptop office"),
+  mavhum tushuncha, hissiyot nomi yoki so'zma-so'z tarjima emas — sahna nimani KO'RSATISHI
+  kerakligini tasvirla, nimani AYTAYOTGANINI emas.
+- Agar sahna aniq bir jismoniy narsa/joy/harakat haqida bo'lmasa (masalan mavhum fikr-mulohaza),
+  shu fikrga eng yaqin, haqiqiy hayotda suratga olinishi mumkin bo'lgan vizual sahnani tanla
+  (masalan "muvaffaqiyat" haqida gap ketsa — "person celebrating success").
 - Natijani FAQAT JSON massiv sifatida qaytar, boshqa matn yoki izohsiz:
   [{{"start": 0.0, "end": 12.5, "keyword": "..."}}, ...]
 
