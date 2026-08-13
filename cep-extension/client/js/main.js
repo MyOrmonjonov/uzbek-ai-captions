@@ -1179,7 +1179,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.15';
+    var PLUGIN_VERSION = '1.4.16';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with
@@ -1564,6 +1564,7 @@
 
         card.addEventListener('click', function () {
             selectKaraokeCard(card, style.key);
+            runKaraokeGeneration(style.key);
         });
         return card;
     }
@@ -1606,17 +1607,17 @@
         });
     }
 
-    els.karaokeGenerateBtn.addEventListener('click', function () {
+    // Selecting a style card starts generation immediately -- an extra "Karaoke video yasash"
+    // click after already picking the style was redundant, so that button (still in index.html
+    // in case it's ever needed again) is hidden and this is the only path to trigger it now.
+    els.karaokeGenerateBtn.hidden = true;
+
+    function runKaraokeGeneration(styleKey) {
         if (!lastWords || !lastWords.length) {
             setStatus("Avval \"Subtitr yaratish\"ni bosing.", 'error');
             return;
         }
-        if (!selectedKaraokeStyle) {
-            setStatus('Karaoke stilini tanlang.', 'error');
-            return;
-        }
         setBusy(true);
-        els.karaokeGenerateBtn.classList.add('busy');
         setStatus('Sequence video eksport qilinmoqda...', 'busy');
 
         exportSequenceVideoForKaraoke()
@@ -1625,7 +1626,7 @@
                 return fetch(API_BASE + '/api/karaoke-caption', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ videoPath: videoPath, words: lastWords, styleKey: selectedKaraokeStyle }),
+                    body: JSON.stringify({ videoPath: videoPath, words: lastWords, styleKey: styleKey }),
                 });
             })
             .then(function (res) { return res.json().then(function (body) { return { res: res, body: body }; }); })
@@ -1655,9 +1656,8 @@
             })
             .finally(function () {
                 setBusy(false);
-                els.karaokeGenerateBtn.classList.remove('busy');
             });
-    });
+    }
 
     (function bootUpdate() {
         var applied = applyPendingUpdate();
