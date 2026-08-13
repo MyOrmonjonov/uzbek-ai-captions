@@ -1386,3 +1386,258 @@ Bu fayl har bir sessiyada nima qilinganini va oxirgi holatni yozib borish uchun.
   bloki ishga tushsa) kerak bo'ladi.
 - Ishlagach: git'da commit qilish (bir necha sessiyadan beri to'planib kelyapti, hali push
   qilinmagan).
+
+## 2026-08-10 — srt_bot: /start menyusi yakunlandi + majburiy ro'yxatdan o'tish (ism/familiya/telefon)
+
+- Sessiya boshida (`git status`) ikkita commit qilinmagan fayl topildi: `keyboards.py`da
+  yarim tayyor `start_keyboard()`/`back_keyboard()` (kanal tugmasi bilan), `licensing.py`da
+  faqat ishlatilmagan `datetime`/`timedelta` import — oldingi sessiya "Statistikam" tugmasi
+  ustida ishlab, to'xtab qolgan ko'rinadi. Avval shu ishni yakunlash so'raldi:
+  - `bot.py`dagi `on_start` endi `start_keyboard()` bilan javob beradi; yangi
+    `howitworks`/`stats`/`start_back` callback handlerlari qo'shildi. "Statistikam" —
+    ism-familiya, telefon, ro'yxatdan o'tgan kun, bugungi bepul limit holati va (bo'lsa)
+    faol litsenziya(lar) muddatini ko'rsatadi.
+- **Foydalanuvchi yangi talab qo'ydi: har bir foydalanuvchi botdan foydalanishdan oldin
+  ism-familiya va telefon raqami bilan ro'yxatdan o'tishi kerak.** Amalga oshirildi:
+  - `licensing.py`: yangi `users` jadvali (`telegram_user_id, first_name, last_name,
+    phone_number, registered_at`) + `is_registered()`/`register_user()`/`get_user()`/
+    `days_since_registration()`/`get_active_licenses_for_user()`.
+  - Yangi `srt_bot/registration.py`: FSM (`RegistrationStates.full_name` → `.phone`) orqali
+    avval ism-familiya, keyin telefon (kontakt-tugma yoki qo'lda yozib) so'raladi.
+    `RegistrationGate` — Dispatcher darajasidagi **outer middleware**
+    (`dp.message.outer_middleware`/`dp.callback_query.outer_middleware`, `bot.py`da
+    ulangan) — ro'yxatdan o'tmagan foydalanuvchining **har qanday** harakatini (media,
+    qurilma kodi, tugmalar — hammasi, faqat registratsiya routeridan tashqari) to'xtatib,
+    avval ro'yxatdan o'tishga yo'naltiradi. Bu **eski foydalanuvchilarga ham** tegishli —
+    ilgari faollashtirilgan/ishlatgan, lekin yangi `users` jadvalida yo'q bo'lganlar ham
+    endi birinchi harakatda ro'yxatdan o'tishi so'raladi.
+- **Haqiqiy Telegram sinovida topilgan va tuzatilgan bug**: foydalanuvchi ism so'ralgan
+  paytda sabrsizlanib yana `/start` yuborgan — bu matn sifatida qabul qilinib, **so'zma-so'z
+  "/start" ism sifatida bazaga yozilib qolgan edi** (`users` jadvalida
+  `first_name='/start'`). Sabab: ism/telefon handlerlari har qanday matnni (buyruqlarni ham)
+  qabul qilardi. Tuzatildi: har ikkala holat (`full_name`, `phone`) uchun alohida
+  `CommandStart()` handler qo'shildi (joriy so'rovni qaytadan ko'rsatadi, saqlamaydi), asosiy
+  matn handlerlariga `~F.text.startswith("/")` filtri qo'shildi. Yaroqsiz test yozuvi
+  `licenses.db`dan tozalandi.
+- **Kichik alohida bug (shu sessiyada tuzatildi)**: `days_since_registration()` da
+  `timedelta.days` — bir necha mikrosekundlik salbiy farqda `-1` qaytarardi (ya'ni
+  hozirgina ro'yxatdan o'tgan foydalanuvchi "-1 kun oldin" ko'rar edi). `total_seconds()`
+  asosida hisoblab, `max(0, ...)` bilan cheklandi.
+- **Botni lokal (shu Windows kompyuterda) ishga tushirishda topilgan holat**: `.env`da
+  `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`LOCAL_BOT_API_URL` bor edi (500MB'gacha fayl
+  yuklash uchun, AWS/Linux'da Docker `telegram-bot-api` server orqali mo'ljallangan), lekin
+  bu kompyuterda mos server ishlamayapti — bot shu tufayli darhol `ConnectionRefusedError`
+  bilan yiqilib tushardi. **Vaqtincha** shu uchta qator `.env`da izohga olindi (kod
+  o'zgarmadi, faqat lokal test uchun) — bot hozir oddiy bulutli Telegram API orqali
+  ishlayapti (20MB fayl chegarasi bilan). **Eslatma**: AWS'ga chiqarilganda yoki shu
+  kompyuterda ham local bot-api server sozlansa, bu uchta qator qaytarilishi kerak.
+- Sinov paytida `bot.py`ning global Python312 interpretatori bilan bitta **bola-jarayon**
+  (child process, `ParentProcessId` = asosiy bot jarayoni) spawn qilinishi kuzatildi —
+  sababi aniqlanmadi (Telegram poll konflikti EMAS, chunki bitta ota-jarayon, dublikat
+  poller emas), zararli ta'siri ko'rinmadi, keyingi safar takrorlansa chuqurroq
+  tekshirish kerak bo'lishi mumkin.
+- Bot hozir **fon rejimida ishlab turibdi** (`.venv\Scripts\python.exe bot.py`,
+  log: `srt_bot/bot_run9.log`), `@ravoncaptions_bot` sifatida to'g'ri ulangan, xatosiz
+  polling qilyapti. **Foydalanuvchi to'liq oqimni oxirigacha (ism → telefon → tasdiqlash →
+  asosiy menyu → Statistikam) hali qayta sinamagan** — birinchi sinovda /start bug'i
+  chiqqach, sessiya "keyinroq davom ettiramiz" deb to'xtatildi.
+- **Hali commit qilinmagan**: `bot.py`, `licensing.py`, `keyboards.py`,
+  `registration.py` (yangi fayl). `.env`dagi vaqtinchalik izohga olingan qatorlar ham
+  eslab qolinishi kerak (git'ga tegmaydi, `.env` gitignored).
+
+### Keyingi qadam
+- Foydalanuvchi Telegram'da `/start`dan to'liq ro'yxatdan o'tishni oxirigacha sinashi kerak:
+  ism-familiya yuborish (bu safar oralab `/start` yubormasdan), telefon (kontakt tugmasi
+  orqali) yuborish, tasdiqlash xabari + asosiy menyu chiqishini, "Statistikam" to'g'ri
+  ma'lumot ko'rsatishini tekshirish.
+- Eski (ro'yxatdan o'tmagan) foydalanuvchilar birinchi harakatda ro'yxatdan o'tishga
+  to'g'ri yo'naltirilayotganini alohida tekshirish.
+- Admin (`ADMIN_TELEGRAM_ID`) ham ro'yxatdan o'tishi kerakmi yoki istisno qilinsinmi —
+  hozir istisnosiz, hammaga baravar qo'llanadi, agar bu noqulay bo'lsa o'zgartirish kerak.
+- Ishlagach: git'da commit qilish (bu fayllar hali umuman commit qilinmagan).
+- `.env`dagi `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`LOCAL_BOT_API_URL` qatorlarini qachon
+  qaytarish kerakligini hal qilish (AWS deploy paytida, yoki shu kompyuterda ham local
+  bot-api server sozlansa).
+
+## 2026-08-12 — B-roll: Pixabay qo'shildi + AE kinetic typography (noldan, MOGRT'siz)
+
+- Sessiya boshida `git status`/`git log` orqali tekshirilganda ma'lum bo'ldi: 2026-08-11'da
+  juda katta ish qilingan — bir qismi (versiya 1.4.2→1.4.10gacha, video-aniqlash osilib
+  qolish bug'i, installer, B-roll yaxshilanishlari) allaqachon commit qilingan, lekin
+  **PROGRESS.md shu ishlarning hech biri bilan yangilanmagan** edi (oxirgi yozuv hali
+  2026-08-10'dagi ro'yxatdan o'tish funksiyasi haqida edi). Bundan tashqari, commit
+  qilinmagan holda saytdan botga tarif deep-link (`?start=1m/3m/6m/12m`), botda mos tarifni
+  to'g'ridan-to'g'ri ko'rsatish, va foydalanuvchi statistikasi kabi ishlar ham topildi —
+  bularning barchasi hali sinovdan o'tkazilmagan/commit qilinmagan holicha qoldi.
+- **B-roll manba qo'shildi — Pixabay** (foydalanuvchi "Pexels'da material kam, Pinterest'ga
+  o'xshab aniq chiqmayapti" deb shikoyat qilgach): Pinterest/YouTube kabi manbalar avval ham
+  litsenziyasiz-qayta-tarqatish xavfi sababli rad etilgan edi (mualliflik huquqi), shuning
+  uchun o'rniga **yana bir bepul/litsenziyalangan stock manba** — Pixabay — Pexels'ga
+  qo'shimcha (o'rniga emas) qo'shildi:
+  - `srt_bot/broll.py`: `_search_pixabay_photos()` (`orientation=horizontal/vertical`
+    to'g'ridan-to'g'ri API parametri bilan), `_search_pixabay_videos()` (Pixabay video
+    API'sida orientatsiya parametri yo'q — shuning uchun ko'proq natija so'rab, natijalarni
+    o'zi tanlagan fayl variantining kengligi/balandligiga qarab landscape/portrait'ga
+    ajratadi, xuddi mavjud `_search_pexels_videos_mixed_orientation()` kabi). Yangi
+    `_search_videos_combined()`/`_search_photos_combined()` — Pexels va Pixabay'ni
+    **parallel** so'rab, natijalarni URL bo'yicha dublikatsiz aralashtiradi, `pick_candidates()`
+    endi shularni ishlatadi (fallback-kalit-so'z mantig'i o'zgarishsiz qoldi).
+  - `config.py`/`.env.example`ga `PIXABAY_API_KEY` qo'shildi, `.env`da bo'sh joy tayyorlab
+    qo'yildi. **Foydalanuvchi hali pixabay.com/api'dan bepul kalit olib qo'ymagan** — kalit
+    bo'lmasa bu funksiyalar shunchaki bo'sh natija qaytaradi (Giphy'dagi kabi xavfsiz
+    pattern), xato bermaydi. `py_compile` bilan sinovdan o'tkazildi (sintaksis xatosiz).
+- **Alohida masala: foydalanuvchi "SaeedReels.zip" (Telegram orqali topilgan, boshqa
+  muallifning tayyor pullik AE skripti, `.jsxbin` — kompilyatsiya qilingan, ochib
+  o'qib bo'lmaydigan format, rus tilidagi pirat-uslubidagi "o'rnatish gaydi" bilan
+  tarqatilgan) funksiyalarini dekompilyatsiya qilib, o'z pluginimizga "bizniki" qilib
+  joylashtirishni so'radi.** Bir necha marta har xil asoslash bilan qayta so'ralgan
+  ("sotib olganman", keyin "akam yozgan") — ikkalasi ham tekshirib bo'lmaydigan da'vo,
+  va `.jsxbin`ning o'zi ham "hech kim ochmasin" deb qilingan pirat-uslubidagi tarqatish
+  formati edi. **Rad etildi** — boshqa muallifning kodini dekompilyatsiya qilib, ko'plab
+  to'lovchi mijozlarga qayta tarqatish mualliflik huquqini buzadi, kim yozganidan qat'i
+  nazar tasdiqlab bo'lmaydi. Muqobil sifatida: skriptning `ico/` papkasidagi effekt
+  nomlaridan (`word_up/down/left/right`, `character_up/down/left/right`, `position_bounce`,
+  `scale_bounce`, `fade_on`) FAQAT g'oya sifatida foydalanib (kod emas), xuddi shu effekt
+  turlarini **noldan** qurish taklif qilindi va foydalanuvchi rozi bo'ldi.
+  - **Muhim topilma**: bizning mavjud `cep-extension/host/assets/mogrt/`dagi 20 ta MOGRT
+    fayl nomlari (`Bounce_word_left_bounce`, `Plain_character_up`, `Plain_1by1`,
+    `Plain_Flicker` va h.k. — 2026-08-05'da boshqa manbadan, foydalanuvchi o'zining/
+    hamkorining ekanini tasdiqlagan holda olingan) **aynan SaeedReels'ning effekt
+    ro'yxati bilan bir xil** ekani aniqlandi — demak bu keng tarqalgan, umumiy MOGRT
+    shablon oilasi ekan (turli skriptlar shu umumiy paketni turlicha o'rab-avtomatlashtiradi),
+    SaeedReels'ga xos original narsa emas. Bu degani — Premiere tomonida bu funksiya
+    **allaqachon mavjud va ishlaydi** (`insertKineticText()`, MOGRT-asosida); yetishmayotgan
+    yagona narsa — **After Effects qo'llab-quvvatlashi** edi.
+- **Kinetic typography After Effects'ga qo'shildi — noldan, MOGRT'siz** (AE'da
+  `Sequence.importMGT()`ning ekvivalenti yo'q, lekin AE'ning o'z Text Animator API'si
+  to'liq skriptlanadigan, hatto haqiqiy harf-darajasidagi boshqaruv beradi — MOGRT'dan
+  ko'ra to'g'ridan-to'g'riroq yo'l):
+  - `host/index.jsx`: yangi `parseKineticStyleRecipe(style)` — panelda ko'rinadigan xuddi
+    shu stil nomini (masalan "Bounce_word_left_bounce") o'qib, animatsiya "retsepti"ga
+    aylantiradi (birlik: so'z/harf, turi: slide/scale/fade/flicker/reveal, yo'nalish,
+    bounce bormi) — MOGRT faylning o'ziga tegmasdan, faqat nomidan.
+  - `_ae_animateWordEntrance()` — butun so'z darajasida Position/Scale/Opacity
+    keyframe'lari bilan slайд/scale/fade/flicker effektlarini (bounce uchun target'dan
+    oshib o'tib, keyin orqaga qaytadigan overshoot bilan) quradi.
+  - `_ae_addCharacterStagger()` — harf-darajasidagi effektlar uchun AE Text Animator +
+    Range Selector qo'shadi, Selector'ning "Offset" xususiyati -100%'dan 100%gacha
+    animatsiya qilinadi (Shape=RampUp bilan) — bu matnni harf-baharf, ketma-ket
+    ochib-chiqaradigan standart AE texnikasi. **Diqqat — bu birinchi marta qo'shilmoqda,
+    haqiqiy AE'da hali sinalmagan**: xususan RampUp/RampDown yo'nalishi (harflar
+    old-tomondan-orqaga yoki aksinchami chiqishi) tasdiqlanmagan — agar teskari chiqsa,
+    `AE_CHAR_RAMP_SHAPE`ni 2'dan 3'ga almashtirish kerak bo'ladi.
+  - `_ae_insertKineticText()` — Premiere'dagi `insertKineticText()`ning so'z-bo'yicha
+    aylanish mantig'ini (keyingi so'zgacha ekranda ushlab turish, juda tez gapirilgan
+    so'zlarni o'tkazib yuborish, progress dispatch) takrorlaydi, lekin AE'da track-
+    rejalashtirish shart emas (qatlamlar shunchaki z-tartib bo'yicha ustma-ust
+    joylashadi, to'qnashuv yo'q) — Premiere'dagi murakkab `trackPool` mantig'idan ancha
+    soddaroq.
+  - `_ae_styleTextLayer()` — avvalgi `importSrtAfterEffects()`dagi shrift/rang/kontur
+    sozlash kodi umumiy funksiyaga chiqarildi (endi ikkalasi — subtitr va kinetic —
+    shundan foydalanadi, ikki joyda takrorlanmaydi).
+  - `insertKineticText()` dispatcher endi `BridgeTalk.appName === "aftereffects"` bo'lsa
+    `_ae_insertKineticText()`ga yo'naltiradi (avval AE uchun to'g'ridan-to'g'ri xato
+    qaytarardi). Panel (`main.js`) tomonida hech qanday o'zgarish shart emas edi — u
+    allaqachon host-agnostik, faqat natija matnini ko'rsatadi.
+  - `node --check` (vaqtinchalik `.js` nusxa orqali, `.jsx` kengaytmasini Node ESM
+    deb noto'g'ri talqin qilgani uchun) xatosiz o'tdi. Versiya **1.4.11**ga oshirildi,
+    `install.bat` bilan lokal qayta o'rnatildi.
+- **Hali sinovdan o'tkazilmagan va push qilinmagan** (ataylab — endi avtomatik
+  deploy pipeline har push'da ishlaydi, sinalmagan AE kodni push qilish darhol
+  mijozlarga tarqalishi mumkin edi): foydalanuvchi Premiere'ni **va** After Effects'ni
+  to'liq qayta ishga tushirib (host `.jsx` o'zgardi — ikkalasida ham shart), kinetic
+  typography'ni sinashi kerak — ayniqsa harf-darajasidagi stillar (`character_*`,
+  `1by1`) haqiqatan harf-baharf chiqayaptimi yoki barchasi bir vaqtda chiqyaptimi.
+
+## 2026-08-12 (davomi) — Reels animatsiya: alohida tugma + shrift/rang/joylashuv/o'lcham sozlamalari
+
+- Backend/bot lokal ishga tushirilmagan edi (panelda "Backend serverga ulanib bo'lmadi"
+  xatosi) — Java backend (`target\Plugin-0.0.1-SNAPSHOT.jar`, mavjud jar, qayta build shart
+  emas edi) va `srt_bot\bot.py` (litsenziya/transkripsiya serveri bilan birga) ikkalasi ham
+  qo'lda ishga tushirildi, ikkalasi ham sog'lom (health-check/log bilan tasdiqlandi).
+- **Timing bug tuzatildi**: `_ae_insertKineticText()` so'z-darajasidagi (character bo'lmagan)
+  stillar uchun `_ae_animateWordEntrance()`ni chaqirganda, so'zning haqiqiy ekranda turish
+  vaqtiga moslab hisoblangan `entranceSeconds`ni UZATMAGAN edi — funksiya ichida buning
+  o'rniga doim qattiq kodlangan `AE_KINETIC_ENTRANCE_SECONDS` konstantasi ishlatilardi. Endi
+  bu qiymat parametr sifatida uzatiladi va ishlatiladi (fade davomiyligi ham shunga moslab
+  qisqartiriladi) — kompozitsiya oxiriga yaqin joylashgan so'zlar uchun animatsiya
+  o'zining ko'rinish vaqtidan oshib ketmasligini ta'minlaydi.
+- **Panel: "Kinetic Typography" mayda switch o'rniga alohida, aniq ko'ringan "Reels
+  animatsiya" tugmasi** (`index.html`: `.toggle-row` olib tashlandi, o'rniga to'liq
+  kenglikdagi `.btn.kinetic-open-btn`, xuddi shu `id="kinetic-toggle"` bilan — `main.js`da
+  hech qanday JS o'zgarishi shart emas edi, `setupToggle()` xilma-xil elementlar bilan
+  universal ishlaydi). CSS'da accent-rangli chegara/hover holati qo'shildi
+  (`style.css`, `.kinetic-open-btn`).
+- **Yangi ko'rinish sozlamalari — faqat After Effects uchun** (Premiere'ning MOGRT yo'lida
+  shrift/rang dasturiy boshqarilmasligi allaqachon hujjatlashtirilgan cheklov edi):
+  panelga shrift tanlash (5 ta xavfsiz variant), matn rangi, kontur rangi, joylashuv
+  (yuqorida/markazda/pastda), o'lcham slider (50%-200%) qo'shildi (`index.html`,
+  yangi `.field-row`/`.color-input`/`.kinetic-style-note` CSS). `main.js` bu qiymatlarni
+  JSON qilib `insertKineticText()`ga oltinchi argument sifatida uzatadi.
+  `host/index.jsx`: `_ae_styleTextLayer()` endi ixtiyoriy `style` obyektini qabul qiladi
+  (yangi `_ae_hexToRgb01()` — "#rrggbb"ni AE'ning [r,g,b] 0-1 formatiga o'giradi),
+  `_ae_insertKineticText()` joylashuvni (Y-koordinata) va o'lcham-koeffitsientini shu
+  sozlamalardan hisoblaydi. Premiere yo'li bu argumentni oddiygina e'tiborsiz qoldiradi.
+  `node --check` xatosiz o'tdi.
+- Versiya **1.4.13**gacha bosqichma-bosqich oshirildi (1.4.11→1.4.12 timing fix,
+  1.4.12→1.4.13 tugma+sozlamalar), har safar `install.bat` bilan lokal qayta o'rnatildi.
+- **Alohida masala — foydalanuvchi qayta-qayta SaeedReels kodini "aynan bir xil"
+  ko'chirishni so'radi** (turli asoslash bilan: "sotib olganman", "akam yozgan",
+  "ekran ochib tekshir", oxiri "GUI o'rnat"). Har safar rad etildi — sabab o'zgarmadi
+  (boshqa mualliflik kodini dekompilyatsiya qilib qayta tarqatish, va bundan tashqari
+  bu terminaldan ishlaydigan agent sifatida GUI dasturlarni umuman ochish qobiliyati yo'q).
+  Foydalanuvchi SaeedReels **faqat Mac uchun** ekanini aytdi — demak shu Windows
+  kompyuterda skrinshot orqali solishtirish ham qiyin. Kelishildi: standart kinetic-
+  typography vositalarida odatiy bo'ladigan generik sozlamalar (shrift/rang/joylashuv/
+  o'lcham — yuqoridagi bandda amalga oshirildi) SaeedReels'ni ko'rmasdan ham qo'shiladi.
+- **Hali sinovdan o'tkazilmagan va push qilinmagan** (sabab o'zgarmadi — avtomatik deploy).
+
+### Keyingi qadam
+- Foydalanuvchi Premiere **va** After Effects'ni to'liq qayta ishga tushirib, kinetic
+  typography'ni ikkalasida ham sinashi kerak: (1) so'z-darajasidagi stillar (slide/bounce/
+  scale/fade/flicker) to'g'ri chiqayaptimi, (2) harf-darajasidagi stillar chindan
+  harf-baharf ochilib chiqayaptimi (agar teskari tartibda chiqsa — `AE_CHAR_RAMP_SHAPE`
+  ni 3'ga o'zgartirish kerak), (3) matn joylashuvi/o'lchami ko'rinishda yaxshimi,
+  (4) yangi "Reels animatsiya" tugmasi va shrift/rang/joylashuv/o'lcham sozlamalari
+  AE'da to'g'ri ishlayaptimi (Premiere'da bu sozlamalar sezilarli ta'sir qilmasligi
+  kutiladi — bu bilinishi kerak, xato emas), (5) "So'zlarga ajratish" va "Yozuv kursor
+  effekti" vositalarini sinashi kerak.
+- Pixabay: foydalanuvchi bepul API key olib `.env`ga qo'yishi va botni qayta ishga
+  tushirishi kerak, shundan keyin haqiqiy kalit bilan natijalarni sinash kerak.
+- Ishlagach (barchasi): git'da commit qilish — juda ko'p o'zgarish (2026-08-11'dan
+  buyon) hali umuman commit qilinmagan, push qilinganda avtomatik deploy ishga tushishini
+  yodda tutish kerak.
+
+## 2026-08-12 (davomi 3) — "Split to Words" + "Yozuv kursor" vositalari (noldan)
+
+- Foydalanuvchi yana bir Telegram'dan olingan fayl (`LMT.jsxbin`, aslida oddiy o'qiladigan
+  kod ekan, kompilyatsiya qilinmagan) yubordi — ochib ko'rilganda footer'da
+  **"Created by LukhmanMotion"** deb aniq yozilgan edi, ya'ni yana boshqa muallifning
+  skripti (avvalgi "o'zim yozganman"/"akam yozgan" da'volariga zid tasdiq). Kodi
+  o'qiladigan bo'lsa ham, ko'chirib olish rad etildi (sabab avvalgidek — mualliflik
+  huquqi, o'qiladigan format ruxsat degani emas). Foydali tomoni: uning ichidagi
+  texnika (Text Animator + Range Selector + Offset sweep) bizning `_ae_insertKineticText()`
+  yondashuvimiz bilan bir xil ekanini tasdiqladi. Foydalanuvchi bilan kelishildi: shu
+  kabi ikkita **umumiy, mashhur AE texnikasi** (kodi emas, faqat g'oyasi) noldan
+  qo'shildi.
+- **"So'zlarga ajratish" (Split to Words)** — `host/index.jsx`: yangi
+  `splitSelectedTextToWords()` — Timeline'da tanlangan (istalgan, transkripsiyaga
+  bog'liq bo'lmagan) bitta matn qatlamini so'zlarga ajratib, har birini asl matndagi
+  joylashuviga mos joyga qo'yadi. Texnika: vaqtinchalik yashirin nusxa-qatlam orqali
+  "so'z + `|` belgisi" uzunligini o'lchab (AE oxiridagi bo'sh joyni o'lchashda
+  qirqib tashlaydi, shuning uchun belgi kerak), so'ng shu uzunlikni ayirib tashlab,
+  har so'zning haqiqiy chap chetini hisoblaydi; `Layer.sourcePointToComp()` orqali
+  comp koordinatasiga o'giradi.
+- **"Yozuv kursor effekti" (Typing cursor)** — yangi `addTypingCursorEffect(durationSeconds)`
+  — tanlangan matn qatlamiga bitta `Slider Control` effekti (0→100, belgilangan
+  davomiylikda) va Source Text'ga ifoda (`expression`) qo'shadi: har freym'da necha
+  belgi ko'rsatilishini `reveal/100 * matn_uzunligi` orqali hisoblab, oxiriga
+  miltillovchi `|` kursorini qo'shadi.
+- Panel (`index.html`/`main.js`): "Reels animatsiya" bo'limiga ikkita yangi tugma
+  ("So'zlarga ajratish", "Yozuv kursor effekti qo'shish" + davomiylik input maydoni)
+  qo'shildi — B-roll/kinetic-btn'dan farqli, bular `transcribeForSegments()`ni chaqirmaydi
+  (transkripsiyaga bog'liq emas), to'g'ridan-to'g'ri evalScript chaqiradi.
+  `setBusy()`ga ham ulandi (boshqa amal davomida disabled bo'ladi).
+  `node --check` xatosiz o'tdi. Versiya **1.4.14**ga oshirildi, `install.bat` bilan
+  lokal qayta o'rnatildi.
+- **Hali sinovdan o'tkazilmagan va push qilinmagan** (sabab o'zgarmadi).

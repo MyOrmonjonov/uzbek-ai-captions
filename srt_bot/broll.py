@@ -5,6 +5,7 @@ API keys never have to ship inside a distributed plugin install — only the act
 media URLs (public CDN links, no key needed to fetch) go back to the client.
 """
 
+import asyncio
 import json
 from urllib.parse import quote
 
@@ -124,8 +125,9 @@ def group_into_scenes(segments: list[dict]) -> list[dict]:
     return scenes
 
 
-async def _search_pexels_videos(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
-    url = f"https://api.pexels.com/videos/search?query={quote(keyword)}&per_page={count}&orientation=landscape"
+async def _search_pexels_videos(session: aiohttp.ClientSession, keyword: str, count: int,
+                                 orientation: str = "landscape") -> list[dict]:
+    url = f"https://api.pexels.com/videos/search?query={quote(keyword)}&per_page={count}&orientation={orientation}"
     async with session.get(url, headers={"Authorization": config.PEXELS_API_KEY}) as resp:
         if resp.status != 200:
             return []
@@ -137,6 +139,28 @@ async def _search_pexels_videos(session: aiohttp.ClientSession, keyword: str, co
             continue
         results.append({"type": "video", "thumbnailUrl": video.get("image", ""), "mediaUrl": chosen.get("link", "")})
     return results
+
+
+# Pexels also has "portrait" (9:16) video, matching the vertical/Shorts-style format B-roll gets
+# cut into for vertical exports — fetched alongside the regular landscape search and merged, so
+# CANDIDATES_PER_TYPE's video slot includes both orientations instead of only ever landscape.
+# (A YouTube-scraping approach was considered and explicitly rejected — see commit history —
+# since it means redistributing other creators' copyrighted video through a paid product used by
+# many customers, not just personal/non-distributed use. Pexels' license permits exactly this.)
+async def _search_pexels_videos_mixed_orientation(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
+    half = max(1, count // 2)
+    landscape, portrait = await asyncio.gather(
+        _search_pexels_videos(session, keyword, half, "landscape"),
+        _search_pexels_videos(session, keyword, count - half, "portrait"),
+    )
+    seen = set()
+    merged = []
+    for item in landscape + portrait:
+        if item["mediaUrl"] in seen:
+            continue
+        seen.add(item["mediaUrl"])
+        merged.append(item)
+    return merged[:count]
 
 
 async def _search_pexels_photos(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
@@ -153,6 +177,90 @@ async def _search_pexels_photos(session: aiohttp.ClientSession, keyword: str, co
             continue
         results.append({"type": "photo", "thumbnailUrl": thumb, "mediaUrl": full})
     return results
+
+
+# Pixabay is a second free/licensed stock source (same "no per-download cost, no redistribution
+# risk" bar Pexels/Giphy were picked under) added alongside Pexels rather than instead of it,
+# purely to widen the result pool for narrow/technical keywords where Pexels alone often comes
+# up short. Requires its own free key (pixabay.com/api docs) — PIXABAY_API_KEY; blank key means
+# these simply return no results, same pattern as Giphy below.
+async def _search_pixabay_photos(session: aiohttp.ClientSession, keyword: str, count: int,
+                                  orientation: str = "horizontal") -> list[dict]:
+    if not config.PIXABAY_API_KEY:
+        return []
+    # per_page must be >=3 per Pixabay's API contract, even when we only want fewer.
+    url = (f"https://pixabay.com/api/?key={config.PIXABAY_API_KEY}&q={quote(keyword)}"
+           f"&image_type=photo&orientation={orientation}&per_page={max(count, 3)}&safesearch=true")
+    async with session.get(url) as resp:
+        if resp.status != 200:
+            return []
+        data = await resp.json()
+    results = []
+    for hit in data.get("hits", [])[:count]:
+        full = hit.get("largeImageURL", "")
+        thumb = hit.get("webformatURL", "") or hit.get("previewURL", "")
+        if not full:
+            continue
+        results.append({"type": "photo", "thumbnailUrl": thumb, "mediaUrl": full})
+    return results
+
+
+async def _search_pixabay_photos_mixed_orientation(session: aiohttp.ClientSession, keyword: str,
+                                                     count: int) -> list[dict]:
+    half = max(1, count // 2)
+    horizontal, vertical = await asyncio.gather(
+        _search_pixabay_photos(session, keyword, half, "horizontal"),
+        _search_pixabay_photos(session, keyword, count - half, "vertical"),
+    )
+    seen = set()
+    merged = []
+    for item in horizontal + vertical:
+        if item["mediaUrl"] in seen:
+            continue
+        seen.add(item["mediaUrl"])
+        merged.append(item)
+    return merged[:count]
+
+
+def _pick_pixabay_video_file(videos: dict) -> dict | None:
+    """Prefers a compact "small" file (~640px wide) — mirrors _pick_pexels_file's ~960px "sd"
+    preference: small enough to download+embed quickly, large enough to read on screen."""
+    for size in ("small", "medium", "large", "tiny"):
+        file = videos.get(size)
+        if file and file.get("url"):
+            return file
+    return None
+
+
+async def _search_pixabay_videos(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
+    if not config.PIXABAY_API_KEY:
+        return []
+    # Unlike its photo search, Pixabay's video search has no orientation filter — fetch double
+    # what's needed and split client-side by the chosen file's own width/height (all size
+    # variants of a hit share one aspect ratio) so portrait clips aren't crowded out by
+    # landscape ones, same goal as _search_pexels_videos_mixed_orientation above.
+    fetch_count = min(max(count * 2, 3), 200)
+    url = (f"https://pixabay.com/api/videos/?key={config.PIXABAY_API_KEY}&q={quote(keyword)}"
+           f"&per_page={fetch_count}&safesearch=true")
+    async with session.get(url) as resp:
+        if resp.status != 200:
+            return []
+        data = await resp.json()
+
+    landscape, portrait = [], []
+    for hit in data.get("hits", []):
+        chosen = _pick_pixabay_video_file(hit.get("videos", {}))
+        if not chosen:
+            continue
+        item = {"type": "video", "thumbnailUrl": chosen.get("thumbnail", ""), "mediaUrl": chosen["url"]}
+        bucket = portrait if chosen.get("height", 0) > chosen.get("width", 0) else landscape
+        bucket.append(item)
+
+    half = max(1, count // 2)
+    merged = landscape[:half] + portrait[:count - half]
+    if len(merged) < count:
+        merged += landscape[half:] + portrait[count - half:]
+    return merged[:count]
 
 
 async def _search_giphy_gifs(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
@@ -205,14 +313,49 @@ async def _search_type_with_fallback(search_fn, session: aiohttp.ClientSession,
     return results
 
 
+async def _search_videos_combined(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
+    """Queries Pexels and Pixabay in parallel and interleaves+dedupes their results, rather
+    than exhausting one before trying the other — so a CANDIDATES_PER_TYPE-sized batch is a
+    mix of both sources' best matches instead of e.g. all-Pexels-unless-it-comes up short."""
+    pexels, pixabay = await asyncio.gather(
+        _search_pexels_videos_mixed_orientation(session, keyword, count),
+        _search_pixabay_videos(session, keyword, count),
+    )
+    seen = set()
+    merged = []
+    for item in pexels + pixabay:
+        if item["mediaUrl"] in seen:
+            continue
+        seen.add(item["mediaUrl"])
+        merged.append(item)
+    return merged[:count]
+
+
+async def _search_photos_combined(session: aiohttp.ClientSession, keyword: str, count: int) -> list[dict]:
+    pexels, pixabay = await asyncio.gather(
+        _search_pexels_photos(session, keyword, count),
+        _search_pixabay_photos_mixed_orientation(session, keyword, count),
+    )
+    seen = set()
+    merged = []
+    for item in pexels + pixabay:
+        if item["mediaUrl"] in seen:
+            continue
+        seen.add(item["mediaUrl"])
+        merged.append(item)
+    return merged[:count]
+
+
 async def pick_candidates(session: aiohttp.ClientSession, keyword: str, fallback_keyword: str = "") -> list[dict]:
     """Each type is fetched and capped independently (not a shared total) — mirrors
     BrollController.pickCandidates()'s reasoning: whenever a type has matches at all, the
     panel's per-type grid gets a full CANDIDATES_PER_TYPE to lay out as two columns. Falls back
     to a broader keyword per-type when the primary one is too sparse (see
-    MIN_RESULTS_BEFORE_FALLBACK)."""
-    videos = await _search_type_with_fallback(_search_pexels_videos, session, keyword, fallback_keyword)
-    photos = await _search_type_with_fallback(_search_pexels_photos, session, keyword, fallback_keyword)
+    MIN_RESULTS_BEFORE_FALLBACK). Video and photo each combine Pexels + Pixabay (see
+    _search_videos_combined/_search_photos_combined); Pexels' video search additionally mixes
+    landscape + portrait orientations (see _search_pexels_videos_mixed_orientation)."""
+    videos = await _search_type_with_fallback(_search_videos_combined, session, keyword, fallback_keyword)
+    photos = await _search_type_with_fallback(_search_photos_combined, session, keyword, fallback_keyword)
     gifs = await _search_type_with_fallback(_search_giphy_gifs, session, keyword, fallback_keyword)
     return videos + photos + gifs
 

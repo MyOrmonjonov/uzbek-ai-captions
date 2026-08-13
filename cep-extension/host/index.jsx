@@ -520,13 +520,60 @@ function clearTrackedLayers(layers) {
     layers.length = 0;
 }
 
+/** Parses a "#rrggbb" string into AE's [r,g,b] 0-1 array form; returns `fallback` for anything
+ * that isn't exactly that shape (missing/malformed panel input shouldn't throw, just fall back
+ * to the caller's default color). */
+function _ae_hexToRgb01(hex, fallback) {
+    try {
+        var m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || ""));
+        if (!m) {
+            return fallback;
+        }
+        var n = parseInt(m[1], 16);
+        return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+    } catch (e) {
+        return fallback;
+    }
+}
+
+/**
+ * Applies our caption/kinetic-typography text look (bold fill + stroke, sized relative to the
+ * comp's shorter dimension so it reads well in both landscape and portrait/vertical comps) —
+ * shared by importSrtAfterEffects() (per-cue captions) and _ae_insertKineticText() (per-word
+ * kinetic bursts, below) so the two styles can't drift apart. `style` is optional — omitted for
+ * captions (keeps their fixed white-on-black look), passed by the kinetic path so the panel's
+ * font/color pickers (see index.html's #kinetic-font-select etc.) take effect there.
+ */
+function _ae_styleTextLayer(textLayer, comp, sizeRatio, style) {
+    style = style || {};
+    try {
+        var sourceTextProp = textLayer.property("Source Text");
+        var textDoc = sourceTextProp.value;
+        textDoc.resetCharStyle();
+        try {
+            textDoc.font = style.font || "Arial-BoldMT";
+        } catch (eFont) {
+            try { textDoc.fontFamily = "Arial"; textDoc.fontStyle = "Bold"; } catch (eFont2) {}
+        }
+        var fontSize = Math.round(Math.min(comp.width, comp.height) * sizeRatio);
+        textDoc.fontSize = fontSize;
+        textDoc.applyFill = true;
+        textDoc.fillColor = _ae_hexToRgb01(style.color, [1, 1, 1]);
+        textDoc.applyStroke = true;
+        textDoc.strokeColor = _ae_hexToRgb01(style.strokeColor, [0, 0, 0]);
+        textDoc.strokeWidth = Math.max(2, Math.round(fontSize * 0.09));
+        textDoc.strokeOverFill = false;
+        textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+        sourceTextProp.setValue(textDoc);
+    } catch (eStyle) {}
+}
+
 /**
  * Adds one text layer per cue directly into the active composition (not a separate new comp the
  * user would have to manually composite in) — matches Premiere's overlay-track approach and,
  * more importantly, matches what a caption actually needs to be: layered on top of the video the
  * user is already looking at, correctly sized/positioned/styled for it, not a disconnected extra
- * comp. Font/fill/stroke are set explicitly since AE text layers otherwise inherit whatever the
- * user's last-used text tool settings happened to be.
+ * comp.
  */
 function importSrtAfterEffects(srtPath) {
     var srtFile = new File(srtPath);
@@ -574,28 +621,7 @@ function importSrtAfterEffects(srtPath) {
                 textLayer.outPoint = end;
             } catch (eTime) {}
 
-            try {
-                var sourceTextProp = textLayer.property("Source Text");
-                var textDoc = sourceTextProp.value;
-                textDoc.resetCharStyle();
-                try {
-                    textDoc.font = "Arial-BoldMT";
-                } catch (eFont) {
-                    try { textDoc.fontFamily = "Arial"; textDoc.fontStyle = "Bold"; } catch (eFont2) {}
-                }
-                // Sized relative to the comp's shorter dimension so it reads well in both
-                // landscape and portrait/vertical (Reels/Shorts-style) compositions.
-                var fontSize = Math.round(Math.min(comp.width, comp.height) * 0.05);
-                textDoc.fontSize = fontSize;
-                textDoc.applyFill = true;
-                textDoc.fillColor = [1, 1, 1];
-                textDoc.applyStroke = true;
-                textDoc.strokeColor = [0, 0, 0];
-                textDoc.strokeWidth = Math.max(2, Math.round(fontSize * 0.09));
-                textDoc.strokeOverFill = false;
-                textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
-                sourceTextProp.setValue(textDoc);
-            } catch (eStyle) {}
+            _ae_styleTextLayer(textLayer, comp, 0.05);
 
             try {
                 var rect = textLayer.sourceRectAtTime(start, false);
@@ -823,6 +849,481 @@ function setMogrtTextDiagnostic(clip, expectedText) {
 // emphasis effect.
 var FAST_SKIP_SLOT_SECONDS = 0.22;
 
+// --- After Effects kinetic typography ---------------------------------------------------------
+// AE has no MOGRT-import equivalent to Sequence.importMGT() (see insertKineticText() below) and
+// no real need for one: AE's own Text Animator API is fully scriptable and gives genuine
+// per-character control, unlike Premiere's black-box MOGRT clips. parseKineticStyleRecipe() reads
+// the *style name* the panel already shows (it lists whatever .mogrt files exist — see
+// listKineticStyles(); those filenames were themselves named after this exact category of
+// direction/bounce/fade effect) and turns it into a from-scratch AE animation recipe, so the same
+// style grid works on both hosts even though only Premiere actually plays back a .mogrt file.
+
+function parseKineticStyleRecipe(style) {
+    var name = String(style || "");
+    var bounce = /^Bounce_/i.test(name);
+    var rest = name.replace(/^(Bounce|Plain)_/i, "");
+    if (/^word_up/i.test(rest)) return { unit: "word", kind: "slide", axis: "y", direction: 1, bounce: bounce };
+    if (/^word_down/i.test(rest)) return { unit: "word", kind: "slide", axis: "y", direction: -1, bounce: bounce };
+    if (/^word_left/i.test(rest)) return { unit: "word", kind: "slide", axis: "x", direction: 1, bounce: bounce };
+    if (/^word_right/i.test(rest)) return { unit: "word", kind: "slide", axis: "x", direction: -1, bounce: bounce };
+    if (/^character_up/i.test(rest)) return { unit: "character", kind: "slide", axis: "y", direction: 1, bounce: bounce };
+    if (/^character_down/i.test(rest)) return { unit: "character", kind: "slide", axis: "y", direction: -1, bounce: bounce };
+    if (/^character_left/i.test(rest)) return { unit: "character", kind: "slide", axis: "x", direction: 1, bounce: bounce };
+    if (/^character_right/i.test(rest)) return { unit: "character", kind: "slide", axis: "x", direction: -1, bounce: bounce };
+    if (/^position_bounce/i.test(rest)) return { unit: "word", kind: "slide", axis: "y", direction: 1, bounce: true };
+    if (/^scale_bounce/i.test(rest)) return { unit: "word", kind: "scale", bounce: true };
+    if (/^fade/i.test(rest)) return { unit: "word", kind: "fade" };
+    if (/^1by1/i.test(rest)) return { unit: "character", kind: "reveal" };
+    if (/^flicker/i.test(rest)) return { unit: "word", kind: "flicker" };
+    return { unit: "word", kind: "fade" }; // unrecognized style name -> safe, always-visible fallback
+}
+
+var AE_KINETIC_ENTRANCE_SECONDS = 0.22;
+var AE_KINETIC_FADE_SECONDS = 0.14;
+var AE_KINETIC_SLIDE_OFFSET_RATIO = 0.10; // fraction of min(comp.width, comp.height)
+
+/** Runs fn(), swallowing any error — so one unsupported keyframe/property call on a given AE
+ * version can't abort the rest of a word's animation setup (the word still ends up on screen,
+ * just missing that one flourish, rather than not being placed at all). */
+function _ae_try(fn) {
+    try { fn(); } catch (e) {}
+}
+
+function _ae_easeKey(prop, keyIndex, overshoot) {
+    _ae_try(function () {
+        var ease = new KeyframeEase(0, overshoot ? 30 : 60);
+        prop.setInterpolationTypeAtKey(keyIndex, KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
+        prop.setTemporalEaseAtKey(keyIndex, [ease], [ease]);
+    });
+}
+
+/**
+ * Whole-word entrance: slides and/or scales in with an opacity fade, optionally overshooting
+ * past its resting value before settling back (the "bounce" styles) — all on the layer's own
+ * Transform properties, since the whole word moves as one unit (no Text Animator needed here;
+ * that's only for the per-character styles below).
+ */
+function _ae_animateWordEntrance(textLayer, comp, recipe, startSeconds, entranceSeconds) {
+    var opacityProp = textLayer.property("Transform").property("Opacity");
+    var restPosition = textLayer.property("Transform").property("Position").value;
+    var restScale = textLayer.property("Transform").property("Scale").value;
+    // entranceSeconds (caller-computed, clamped to this word's actual on-screen duration) is
+    // used when given, falling back to the nominal constant only for standalone/direct calls —
+    // without this, a word placed right before the composition's own end could get keyframes
+    // for an entrance animation longer than the time it's actually visible for.
+    var entrance = entranceSeconds || AE_KINETIC_ENTRANCE_SECONDS;
+    var fadeSeconds = Math.min(AE_KINETIC_FADE_SECONDS, entrance);
+
+    _ae_try(function () {
+        opacityProp.setValueAtTime(startSeconds, 0);
+        opacityProp.setValueAtTime(startSeconds + fadeSeconds, 100);
+    });
+
+    if (recipe.kind === "slide") {
+        var offset = Math.round(Math.min(comp.width, comp.height) * AE_KINETIC_SLIDE_OFFSET_RATIO);
+        var vector = recipe.axis === "x" ? [offset * recipe.direction, 0, 0] : [0, offset * recipe.direction, 0];
+        var startPos = [restPosition[0] + vector[0], restPosition[1] + vector[1], restPosition[2] || 0];
+        var posProp = textLayer.property("Transform").property("Position");
+        _ae_try(function () {
+            posProp.setValueAtTime(startSeconds, startPos);
+            if (recipe.bounce) {
+                // Overshoots slightly past the resting position (opposite the travel direction)
+                // before settling back — the "spring" look the Bounce_* styles are named for.
+                var overshoot = [restPosition[0] - vector[0] * 0.18, restPosition[1] - vector[1] * 0.18, restPosition[2] || 0];
+                posProp.setValueAtTime(startSeconds + entrance * 0.7, overshoot);
+            }
+            posProp.setValueAtTime(startSeconds + entrance, restPosition);
+        });
+        _ae_try(function () {
+            for (var k = 1; k <= posProp.numKeys; k++) {
+                _ae_easeKey(posProp, k, recipe.bounce);
+            }
+        });
+    } else if (recipe.kind === "scale") {
+        var scaleProp = textLayer.property("Transform").property("Scale");
+        _ae_try(function () {
+            scaleProp.setValueAtTime(startSeconds, [restScale[0] * 0.4, restScale[1] * 0.4, restScale[2] || 100]);
+            if (recipe.bounce) {
+                scaleProp.setValueAtTime(startSeconds + entrance * 0.7, [restScale[0] * 1.15, restScale[1] * 1.15, restScale[2] || 100]);
+            }
+            scaleProp.setValueAtTime(startSeconds + entrance, restScale);
+        });
+        _ae_try(function () {
+            for (var k = 1; k <= scaleProp.numKeys; k++) {
+                _ae_easeKey(scaleProp, k, recipe.bounce);
+            }
+        });
+    } else if (recipe.kind === "flicker") {
+        // Fast opacity flashes before settling fully visible — a cheap stand-in for a
+        // glitch-style "flicker in" without needing an actual glitch/displacement effect.
+        _ae_try(function () {
+            opacityProp.setValueAtTime(startSeconds, 0);
+            opacityProp.setValueAtTime(startSeconds + 0.03, 100);
+            opacityProp.setValueAtTime(startSeconds + 0.06, 0);
+            opacityProp.setValueAtTime(startSeconds + 0.09, 100);
+            for (var k = 1; k <= opacityProp.numKeys; k++) {
+                opacityProp.setInterpolationTypeAtKey(k, KeyframeInterpolationType.LINEAR, KeyframeInterpolationType.LINEAR);
+            }
+        });
+    }
+    // "fade" needs nothing beyond the opacity keyframes already set above.
+}
+
+// 1=Square 2=RampUp 3=RampDown 4=Triangle 5=Round 6=Smooth (Adobe scripting guide's Range
+// Selector "Shape" enum). RampUp is expected to reveal the string front-to-back as Offset below
+// sweeps from -100% to 100%, but this — like several other "first real Premiere test" notes
+// elsewhere in this file — has NOT yet been confirmed against a live AE render. If characters
+// reveal back-to-front instead, flip this to 3 (RampDown).
+var AE_CHAR_RAMP_SHAPE = 2;
+
+/**
+ * Per-character entrance via AE's Text Animator + Range Selector: an Animator's Position/Opacity
+ * properties apply only to whichever characters the Range Selector currently "covers", and
+ * keyframing the selector's Offset while its range Shape is a ramp sweeps that coverage across
+ * the string over time — the scripted equivalent of AE's built-in "Animate In: Fade Up
+ * Characters"/typewriter presets. Falls back to false (caller then uses the whole-word entrance
+ * instead) if any of this throws, e.g. on an AE version where a match name has changed.
+ */
+function _ae_addCharacterStagger(textLayer, comp, recipe, startSeconds, entranceSeconds) {
+    try {
+        var animators = textLayer.property("ADBE Text Properties").property("ADBE Text Animators");
+        var animator = animators.addProperty("ADBE Text Animator");
+        var animatorProps = animator.property("ADBE Text Animator Properties");
+
+        var opacityProp = animatorProps.addProperty("ADBE Text Opacity");
+        opacityProp.setValue(0);
+
+        if (recipe.kind === "slide") {
+            var offset = Math.round(Math.min(comp.width, comp.height) * AE_KINETIC_SLIDE_OFFSET_RATIO);
+            var posProp = animatorProps.addProperty("ADBE Text Position 3D");
+            posProp.setValue(recipe.axis === "x" ? [offset * recipe.direction, 0, 0] : [0, offset * recipe.direction, 0]);
+        }
+
+        var selectors = animator.property("ADBE Text Selectors");
+        var rangeSelector = selectors.addProperty("ADBE Text Selector");
+        _ae_try(function () {
+            rangeSelector.property("ADBE Text Range Advanced").property("ADBE Text Range Shape").setValue(AE_CHAR_RAMP_SHAPE);
+        });
+
+        var offsetProp = rangeSelector.property("ADBE Text Percent Offset");
+        offsetProp.setValueAtTime(startSeconds, -100);
+        offsetProp.setValueAtTime(startSeconds + entranceSeconds, 100);
+        _ae_try(function () {
+            for (var k = 1; k <= offsetProp.numKeys; k++) {
+                offsetProp.setInterpolationTypeAtKey(k, KeyframeInterpolationType.LINEAR, KeyframeInterpolationType.LINEAR);
+            }
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+// Regenerating (new style/duration try) replaces the previous kinetic layers instead of stacking
+// a second set on top — same reasoning as lastKineticClips for Premiere, just using AE's layer
+// .remove() via the shared clearTrackedLayers() helper (already used for AE captions above).
+var lastAeKineticLayers = [];
+
+/**
+ * Adds one text layer per word directly into the active composition, each timed to that word's
+ * start and held until the next word begins (same "avoid mid-sentence flicker" reasoning as
+ * insertCaptionMogrt()/insertKineticText()'s Premiere path), animated in per parseKineticStyleRecipe().
+ * Unlike Premiere, AE text layers don't need track-scheduling for overlaps — layers simply stack
+ * by z-order (later-added layers render on top), so consecutive/overlapping words never collide.
+ */
+// AE-only appearance defaults (Premiere's MOGRT path has no equivalent — see the panel's
+// "faqat After Effects'da qo'llanadi" note next to these controls in index.html). sizeRatio is
+// a multiplier on this base fraction of the comp's shorter dimension, driven by the panel's
+// #kinetic-size-slider (50-200%).
+var AE_KINETIC_BASE_SIZE_RATIO = 0.09;
+
+function _ae_insertKineticText(style, wordsJson, minDurationSeconds, styleOptionsJson) {
+    var comp = _ae_findActiveComp();
+    if (!comp) {
+        return "ERROR: Faol kompozitsiya topilmadi. Avval bir kompozitsiyani oching.";
+    }
+
+    var words;
+    try {
+        words = JSON.parse(wordsJson);
+    } catch (eParse) {
+        return "ERROR: So'zlar ma'lumotini o'qib bo'lmadi.";
+    }
+    if (!words || !words.length) {
+        return "ERROR: Animatsiya uchun so'zlar topilmadi.";
+    }
+
+    var styleOptions = {};
+    try {
+        styleOptions = JSON.parse(styleOptionsJson) || {};
+    } catch (eOpt) {
+        styleOptions = {};
+    }
+    var sizeRatio = AE_KINETIC_BASE_SIZE_RATIO * (Number(styleOptions.sizeRatio) || 1);
+    var positionY;
+    if (styleOptions.position === "top") {
+        positionY = comp.height * 0.15;
+    } else if (styleOptions.position === "bottom") {
+        positionY = comp.height * 0.85;
+    } else {
+        positionY = comp.height / 2;
+    }
+
+    var recipe = parseKineticStyleRecipe(style);
+    clearTrackedLayers(lastAeKineticLayers);
+
+    app.beginUndoGroup("Ravon Captions - kinetic typography");
+    try {
+        var added = 0;
+        var skippedFast = 0;
+        for (var i = 0; i < words.length; i++) {
+            var word = words[i];
+            if (!word || !word.text) {
+                continue;
+            }
+
+            var nextWord = words[i + 1];
+            var slotSeconds = (nextWord ? nextWord.start : word.end) - word.start;
+            if (slotSeconds < FAST_SKIP_SLOT_SECONDS) {
+                skippedFast++;
+                dispatchProgress("kinetic", i + 1, words.length);
+                continue;
+            }
+
+            var startSeconds = Math.max(0, Math.min(word.start, comp.duration));
+            var holdUntil = (nextWord && nextWord.start > word.end) ? nextWord.start : word.end;
+            var duration = Math.max(holdUntil - word.start, minDurationSeconds || 0, AE_KINETIC_ENTRANCE_SECONDS + 0.1);
+            var endSeconds = Math.max(startSeconds + 0.1, Math.min(startSeconds + duration, comp.duration));
+
+            var textLayer = comp.layers.addText(word.text);
+            lastAeKineticLayers.push(textLayer);
+            _ae_try(function () {
+                textLayer.startTime = 0;
+                textLayer.inPoint = startSeconds;
+                textLayer.outPoint = endSeconds;
+            });
+            _ae_styleTextLayer(textLayer, comp, sizeRatio, styleOptions);
+            _ae_try(function () {
+                textLayer.property("Transform").property("Position").setValue([comp.width / 2, positionY]);
+            });
+
+            var entranceSeconds = Math.min(AE_KINETIC_ENTRANCE_SECONDS, Math.max(endSeconds - startSeconds - 0.02, 0.05));
+            if (recipe.unit === "character") {
+                var staggered = _ae_addCharacterStagger(textLayer, comp, recipe, startSeconds, entranceSeconds);
+                if (!staggered) {
+                    _ae_animateWordEntrance(textLayer, comp, { unit: "word", kind: "fade" }, startSeconds, entranceSeconds);
+                }
+            } else {
+                _ae_animateWordEntrance(textLayer, comp, recipe, startSeconds, entranceSeconds);
+            }
+
+            dispatchProgress("kinetic", i + 1, words.length);
+            added++;
+        }
+
+        if (added === 0) {
+            if (skippedFast > 0) {
+                return "Butun matn juda tez gapirilgani uchun (" + skippedFast +
+                    " ta so'z) animatsiyasiz qoldirildi. Oddiy subtitr hamon amal qiladi.";
+            }
+            return "ERROR: Hech qanday so'z uchun animatsiya qo'shib bo'lmadi.";
+        }
+        var summary = added + "/" + words.length + " so'z animatsiya bilan '" + comp.name + "' kompozitsiyasiga qo'shildi.";
+        if (skippedFast > 0) {
+            summary += " (" + skippedFast + " ta so'z tez gapirilgani uchun animatsiyasiz qoldirildi)";
+        }
+        return summary;
+    } finally {
+        app.endUndoGroup();
+    }
+}
+
+/** Sets a text layer's Source Text to `text`, left-justified (needed by the width-measurement
+ * trick in splitSelectedTextToWords() below — center/right justification would shift where the
+ * measured substring's left edge sits relative to the layer's anchor). */
+function _ae_setLayerTextLeft(targetLayer, text) {
+    var p = targetLayer.property("Source Text");
+    var td = p.value;
+    td.text = text;
+    try { td.justification = ParagraphJustification.LEFT_JUSTIFY; } catch (eJust) {}
+    p.setValue(td);
+}
+
+/**
+ * Splits the selected text layer into one text layer per word, positioned at the same
+ * horizontal spots the words occupied in the original combined text — a manual editing utility
+ * for hand-animating a title/phrase word-by-word (works on any text layer the user selects in
+ * the Timeline, independent of transcription/timestamps, unlike _ae_insertKineticText() above).
+ * Technique: a throwaway hidden duplicate layer has its text swapped word-by-word (each with a
+ * trailing "|" marker) so its rendered width can be measured via sourceRectAtTime() — the marker
+ * is needed because AE trims trailing whitespace out of that measurement, which would otherwise
+ * throw off every word's computed left edge; subtracting the marker-only width cancels it back
+ * out. Layer.sourcePointToComp() then converts each word's source-space center into the comp
+ * coordinate its own duplicate layer needs to be moved to.
+ */
+function splitSelectedTextToWords() {
+    var comp = _ae_findActiveComp();
+    if (!comp) {
+        return "ERROR: Faol kompozitsiya topilmadi. Avval bir kompozitsiyani oching.";
+    }
+    if (comp.selectedLayers.length !== 1) {
+        return "ERROR: Aynan bitta matn qatlamini tanlang (Timeline'da bosib belgilang).";
+    }
+    var layer = comp.selectedLayers[0];
+    var sourceTextProp;
+    try {
+        sourceTextProp = layer.property("Source Text");
+    } catch (eProp) {
+        sourceTextProp = null;
+    }
+    if (!sourceTextProp) {
+        return "ERROR: Tanlangan qatlam matn qatlami emas.";
+    }
+
+    var fullText = sourceTextProp.value.text;
+    if (!fullText || !fullText.replace(/\s+/g, "")) {
+        return "ERROR: Matn qatlami bo'sh.";
+    }
+    var matches = [];
+    var re = /\S+/g;
+    var m;
+    while ((m = re.exec(fullText)) !== null) {
+        matches.push({ word: m[0], index: m.index });
+    }
+    if (matches.length < 2) {
+        return "ERROR: Matnda kamida 2 ta so'z bo'lishi kerak (bitta so'zni ajratishning ma'nosi yo'q).";
+    }
+
+    app.beginUndoGroup("Ravon Captions - so'zlarga ajratish");
+    try {
+        var time = comp.time;
+        var originalRect = layer.sourceRectAtTime(time, false);
+        var originalTransform = layer.property("Transform");
+        var originalAnchorY = originalTransform.property("Anchor Point").value[1];
+        var originalPositionY = originalTransform.property("Position").value[1];
+
+        var measureLayer = layer.duplicate();
+        measureLayer.enabled = false;
+
+        function measureWidth(text) {
+            _ae_setLayerTextLeft(measureLayer, text + "|");
+            var withMarker = measureLayer.sourceRectAtTime(time, false).width;
+            _ae_setLayerTextLeft(measureLayer, "|");
+            var markerOnly = measureLayer.sourceRectAtTime(time, false).width;
+            return withMarker - markerOnly;
+        }
+
+        var created = 0;
+        for (var i = 0; i < matches.length; i++) {
+            var word = matches[i].word;
+            var prefixWidth = measureWidth(fullText.substring(0, matches[i].index));
+            var wordLeftInSource = originalRect.left + prefixWidth;
+
+            var newLayer = layer.duplicate();
+            newLayer.name = word;
+            _ae_setLayerTextLeft(newLayer, word);
+
+            var newRect = newLayer.sourceRectAtTime(time, false);
+            var wordCenterInSourceX = wordLeftInSource + newRect.width / 2;
+            var compPointX = layer.sourcePointToComp([wordCenterInSourceX, originalRect.top])[0];
+
+            var tr = newLayer.property("Transform");
+            var oldAnchor = tr.property("Anchor Point").value;
+            var oldPos = tr.property("Position").value;
+            var anchorX = newRect.left + newRect.width / 2;
+            if (oldAnchor.length === 2) {
+                tr.property("Anchor Point").setValue([anchorX, originalAnchorY]);
+            } else {
+                tr.property("Anchor Point").setValue([anchorX, originalAnchorY, oldAnchor[2]]);
+            }
+            if (oldPos.length === 2) {
+                tr.property("Position").setValue([compPointX, originalPositionY]);
+            } else {
+                tr.property("Position").setValue([compPointX, originalPositionY, oldPos[2]]);
+            }
+            created++;
+        }
+
+        measureLayer.remove();
+        layer.enabled = false;
+
+        return created + " ta so'zga ajratildi (asl qatlam o'chirilgan holda, tagida saqlandi).";
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+}
+
+/** Escapes text for embedding as a double-quoted string literal inside a generated AE expression
+ * (not the same escaping evalScript's own call string needs — this one only has to satisfy
+ * ExtendScript's own string-literal syntax once the expression is actually assigned/evaluated). */
+function _ae_escapeForExpressionString(text) {
+    return String(text)
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n/g, "\\n");
+}
+
+/**
+ * Applies a typewriter reveal + blinking cursor to the selected text layer via a single Source
+ * Text expression driven by a keyframed Slider Control effect. Done via an expression (not a
+ * Text Animator Range Selector, unlike the rest of this file's kinetic effects) because the
+ * cursor character has to track the reveal edge exactly, and an expression reading a plain 0-100
+ * slider value is a far more direct way to compute "how many characters are revealed right now"
+ * than reading a Range Selector's own internal timing back out.
+ */
+function addTypingCursorEffect(durationSeconds) {
+    var comp = _ae_findActiveComp();
+    if (!comp) {
+        return "ERROR: Faol kompozitsiya topilmadi. Avval bir kompozitsiyani oching.";
+    }
+    if (comp.selectedLayers.length !== 1) {
+        return "ERROR: Aynan bitta matn qatlamini tanlang (Timeline'da bosib belgilang).";
+    }
+    var layer = comp.selectedLayers[0];
+    var sourceTextProp;
+    try {
+        sourceTextProp = layer.property("Source Text");
+    } catch (eProp) {
+        sourceTextProp = null;
+    }
+    if (!sourceTextProp) {
+        return "ERROR: Tanlangan qatlam matn qatlami emas.";
+    }
+    var fullText = sourceTextProp.value.text;
+    if (!fullText) {
+        return "ERROR: Matn qatlami bo'sh.";
+    }
+
+    app.beginUndoGroup("Ravon Captions - yozuv kursor effekti");
+    try {
+        var time = comp.time;
+        var effects = layer.property("Effects");
+        var reveal = effects.addProperty("ADBE Slider Control");
+        reveal.name = "Reveal";
+        var duration = Math.max(Number(durationSeconds) || 1.5, 0.2);
+        reveal.property(1).setValueAtTime(time, 0);
+        reveal.property(1).setValueAtTime(time + duration, 100);
+
+        var escaped = _ae_escapeForExpressionString(fullText);
+        sourceTextProp.expression =
+            'var full = "' + escaped + '";\n' +
+            'var reveal = effect("Reveal")(1);\n' +
+            'var n = Math.round(full.length * (reveal / 100));\n' +
+            'var shown = full.substr(0, n);\n' +
+            'var blink = Math.sin(time * 10) >= 0;\n' +
+            'shown + (blink ? "|" : "");';
+
+        return "Yozuv kursor effekti qo'shildi (" + duration.toFixed(1) + "s davomida yoziladi).";
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+}
+// --- End After Effects kinetic typography ------------------------------------------------------
+
 /**
  * Places one MOGRT clip instance per word on its own overlay track, each trimmed to that
  * word's start/end and re-texted to that word. Unlike SRT/video files, .mogrt files can't be
@@ -831,12 +1332,16 @@ var FAST_SKIP_SLOT_SECONDS = 0.22;
  * the Graphics Templates panel instead, never producing a project item to place with
  * overwriteClip. Sequence.importMGT() is the dedicated, documented API for this: it drops a
  * MOGRT straight onto a track at a given time and hands back the resulting TrackItem directly,
- * with no project-item detour needed.
+ * with no project-item detour needed. (After Effects instead uses _ae_insertKineticText() above,
+ * a from-scratch Text Animator implementation — AE has no MOGRT-placement API to route through.)
  */
-function insertKineticText(style, wordsJson, sourceMediaPath, mogrtFolder, minDurationSeconds) {
+function insertKineticText(style, wordsJson, sourceMediaPath, mogrtFolder, minDurationSeconds, styleOptionsJson) {
     try {
+        if (BridgeTalk.appName === "aftereffects") {
+            return _ae_insertKineticText(style, wordsJson, minDurationSeconds, styleOptionsJson);
+        }
         if (BridgeTalk.appName !== "premierepro") {
-            return "ERROR: Animatsion matn faqat Premiere Pro'da qo'llab-quvvatlanadi.";
+            return "ERROR: Animatsion matn faqat Premiere Pro yoki After Effects'da qo'llab-quvvatlanadi.";
         }
         if (!app.project) {
             return "ERROR: Premiere'da ochiq loyiha topilmadi.";

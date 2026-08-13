@@ -7,6 +7,8 @@ FORMAT_LABELS = {
     "3": "3 qator",
 }
 
+CHANNEL_URL = "https://t.me/ravon_captions"
+
 
 def format_choice_keyboard() -> InlineKeyboardMarkup:
     buttons = [
@@ -14,3 +16,19 @@ def format_choice_keyboard() -> InlineKeyboardMarkup:
         for key, label in FORMAT_LABELS.items()
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def start_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Qanday ishlaydi?", callback_data="howitworks")],
+            [InlineKeyboardButton(text="📊 Statistikam", callback_data="stats")],
+            [InlineKeyboardButton(text="📢 Kanal", url=CHANNEL_URL)],
+        ]
+    )
+
+
+def back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="◀ Orqaga", callback_data="start_back")]]
+    )

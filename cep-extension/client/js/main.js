@@ -120,6 +120,15 @@
         kineticShowAll: document.getElementById('kinetic-show-all'),
         kineticMinDurationSlider: document.getElementById('kinetic-min-duration-slider'),
         kineticMinDurationBadge: document.getElementById('kinetic-min-duration-badge'),
+        kineticFontSelect: document.getElementById('kinetic-font-select'),
+        kineticColorInput: document.getElementById('kinetic-color-input'),
+        kineticStrokeColorInput: document.getElementById('kinetic-stroke-color-input'),
+        kineticPositionSelect: document.getElementById('kinetic-position-select'),
+        kineticSizeSlider: document.getElementById('kinetic-size-slider'),
+        kineticSizeBadge: document.getElementById('kinetic-size-badge'),
+        kineticSplitWordsBtn: document.getElementById('kinetic-split-words-btn'),
+        kineticTypingDurationInput: document.getElementById('kinetic-typing-duration-input'),
+        kineticTypingCursorBtn: document.getElementById('kinetic-typing-cursor-btn'),
         kineticBtn: document.getElementById('kinetic-btn'),
         resultsPanel: document.getElementById('results-panel'),
         progressRingLabel: document.getElementById('progress-ring-label'),
@@ -191,6 +200,10 @@
         els.kineticMinDurationBadge.textContent = parseFloat(els.kineticMinDurationSlider.value).toFixed(1) + 's';
     });
 
+    els.kineticSizeSlider.addEventListener('input', function () {
+        els.kineticSizeBadge.textContent = els.kineticSizeSlider.value + '%';
+    });
+
     function updatePreview() {
         var maxLines = parseInt(els.maxLinesSlider.value, 10);
         var wordsPerLine = parseInt(els.wordsPerLineSlider.value, 10);
@@ -254,6 +267,8 @@
         els.translateToggle.disabled = isBusy;
         els.advancedToggle.disabled = isBusy;
         els.kineticToggle.disabled = isBusy;
+        els.kineticSplitWordsBtn.disabled = isBusy;
+        els.kineticTypingCursorBtn.disabled = isBusy;
     }
 
     // csi.evalScript()'s callback is the ONLY thing that ever updates #file-path-text away from
@@ -608,8 +623,18 @@
             // no offset lookup needed (see exportActiveSequenceAudio() in host/index.jsx).
             var escapedMedia = escapeForEval('');
             var escapedFolder = escapeForEval(MOGRT_FOLDER);
+            // AE-only appearance controls (see index.html's kinetic-style-note) — insertKineticText()
+            // simply ignores this on the Premiere/MOGRT path.
+            var styleOptions = {
+                font: els.kineticFontSelect.value,
+                color: els.kineticColorInput.value,
+                strokeColor: els.kineticStrokeColorInput.value,
+                position: els.kineticPositionSelect.value,
+                sizeRatio: parseInt(els.kineticSizeSlider.value, 10) / 100
+            };
+            var escapedOptions = escapeForEval(JSON.stringify(styleOptions));
             var script = 'insertKineticText("' + style + '", "' + escapedWords + '", "' + escapedMedia + '", "' +
-                escapedFolder + '", ' + minDurationSeconds + ')';
+                escapedFolder + '", ' + minDurationSeconds + ', "' + escapedOptions + '")';
             csInterface.evalScript(script, function (result) {
                 els.kineticBtn.disabled = false;
                 els.kineticBtn.textContent = "Animatsion matn qo'shish";
@@ -619,6 +644,26 @@
                     setStatus(result || 'Bajarildi.', 'ok');
                 }
             });
+        });
+    });
+
+    // Both of these are standalone AE utilities — unlike kinetic-btn above, they act on
+    // whatever text layer the user has selected in the Timeline right now, not on
+    // transcription output, so there's no transcribeForSegments() step first.
+    els.kineticSplitWordsBtn.addEventListener('click', function () {
+        els.kineticSplitWordsBtn.disabled = true;
+        csInterface.evalScript('splitSelectedTextToWords()', function (result) {
+            els.kineticSplitWordsBtn.disabled = false;
+            setStatus(result || 'Bajarildi.', (result && result.indexOf('ERROR:') === 0) ? 'error' : 'ok');
+        });
+    });
+
+    els.kineticTypingCursorBtn.addEventListener('click', function () {
+        els.kineticTypingCursorBtn.disabled = true;
+        var durationSeconds = parseFloat(els.kineticTypingDurationInput.value) || 1.5;
+        csInterface.evalScript('addTypingCursorEffect(' + durationSeconds + ')', function (result) {
+            els.kineticTypingCursorBtn.disabled = false;
+            setStatus(result || 'Bajarildi.', (result && result.indexOf('ERROR:') === 0) ? 'error' : 'ok');
         });
     });
 
@@ -1066,7 +1111,7 @@
     // ochilishida bo'ladi (Premiere ishlab turganda plugin o'z fayllarini almashtira olmasligi
     // mumkin, ayniqsa Windows'da fayl band bo'ladi) — xuddi shu yondashuv boshqa CEP
     // pluginlarida (masalan raqobatchi caption.uz'da) ham tasdiqlangan, ishonchli naqsh.
-    var PLUGIN_VERSION = '1.4.10';
+    var PLUGIN_VERSION = '1.4.14';
     var UPDATE_HOST = 'aitilmoch.duckdns.org';
     var EXT_DIR = csInterface.getSystemPath(SystemPath.EXTENSION);
     // nodeFs/nodePath/nodeHttps are already required near the top of the file (shared with

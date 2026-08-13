@@ -10,7 +10,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import config
@@ -19,9 +19,10 @@ import licensing
 import licensing_handlers
 import licensing_server
 import media
+import registration
 import srt_builder
 import transcriber
-from keyboards import FORMAT_LABELS, format_choice_keyboard
+from keyboards import FORMAT_LABELS, back_keyboard, format_choice_keyboard, start_keyboard
 
 # hybrid_transcriber runs Whisper (frame-accurate word timing) and Gemini (more reliable
 # recognition content for a low-resource language like Uzbek) over the same audio and aligns
@@ -66,10 +67,97 @@ FREE_QUOTA_TEXT = (
     "Premiere/After Effects paneli orqali cheklovsiz ishlatish uchun to'liq versiyani oling."
 )
 
+HOW_IT_WORKS_TEXT = (
+    "🎬 Bot qanday ishlaydi:\n\n"
+    "1. Menga video yoki audio fayl yuboring.\n"
+    "2. Subtitr formatini tanlang (✨ Premium, 1/2/3 qator).\n"
+    "3. Bir necha soniyada tayyor .srt fayl olasiz.\n\n"
+    "Tayyor faylni CapCut, Premiere, DaVinci — istalgan dasturga tashlashingiz mumkin.\n\n"
+    "Kuniga 1 marta bepul. Premiere/After Effects paneli orqali cheklovsiz foydalanish uchun "
+    "to'liq versiyani oling (qurilma kodini shu botga yuboring)."
+)
+
+
+def _tariff_greeting(tariff: dict) -> str:
+    price = f"{tariff['price_som']:,} so'm".replace(",", " ")
+    return (
+        f"Siz {tariff['label']} tarifni tanladingiz ({price}).\n\n"
+        "Bu — Premiere/After Effects paneli uchun litsenziya. Agar panel hali "
+        "o'rnatilmagan bo'lsa, avval saytimizdan yuklab oling va o'rnating.\n\n"
+        "Panelda ko'rsatilgan qurilma kodini (masalan XXXX-XXXX-XXXX) shu yerga "
+        "yuboring — to'lov ko'rsatmasi darhol chiqadi."
+    )
+
+
+async def send_welcome(message: Message, payload: str | None = None) -> None:
+    """Shared by on_start (already-registered users) and registration.py (users who
+    just finished registering) so a "?start=" deep-link payload survives a registration
+    detour started by the same /start. payload is either a tariff key from the website's
+    pricing buttons ("3m", see config.TARIFFS) or a device code from the plugin's
+    "Botga o'tish" button (see cep-extension/client/js/main.js) -- device-code-shaped
+    payloads take priority since that's a more specific/actionable signal."""
+    if payload and licensing_handlers.DEVICE_CODE_RE.match(payload):
+        await licensing_handlers.handle_device_code(message, payload)
+        return
+
+    tariff = config.TARIFFS_BY_KEY.get(payload) if payload else None
+    if tariff is not None:
+        licensing_handlers.set_pending_tariff(message.from_user.id, tariff)
+        await message.answer(_tariff_greeting(tariff), reply_markup=start_keyboard())
+    else:
+        await message.answer(START_TEXT, reply_markup=start_keyboard())
+
 
 @router.message(CommandStart())
-async def on_start(message: Message) -> None:
-    await message.answer(START_TEXT)
+async def on_start(message: Message, command: CommandObject) -> None:
+    # RegistrationGate (registration.py) intercepts /start for any not-yet-registered user
+    # before it reaches this handler, so by the time we get here the user is registered.
+    # command.args carries a website/plugin "?start=<payload>" deep-link, if any.
+    await send_welcome(message, command.args)
+
+
+@router.callback_query(F.data == "howitworks")
+async def on_how_it_works(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(HOW_IT_WORKS_TEXT, reply_markup=back_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "stats")
+async def on_stats(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    profile = licensing.get_user(user_id)
+    if profile is None:
+        await callback.answer("Ma'lumot topilmadi.", show_alert=True)
+        return
+
+    days_since = licensing.days_since_registration(user_id)
+    free_quota_line = (
+        "Bor ✅" if licensing.has_free_quota_today(user_id) else "Bugun ishlatilgan ❌"
+    )
+    full_name = f"{profile.first_name} {profile.last_name}".strip()
+    lines = [
+        "📊 Sizning statistikangiz",
+        "",
+        f"Ism familiya: {full_name}",
+        f"Telefon: {profile.phone_number}",
+        f"Ro'yxatdan o'tgan: {days_since} kun oldin",
+        f"Bugungi bepul limit: {free_quota_line}",
+    ]
+
+    active_licenses = licensing.get_active_licenses_for_user(user_id)
+    if active_licenses:
+        lines.append("")
+        lines.append("Faol litsenziya(lar) (Premiere/AE paneli):")
+        lines.extend(f"• {device_code}: {days_left:.1f} kun qoldi" for device_code, days_left in active_licenses)
+
+    await callback.message.edit_text("\n".join(lines), reply_markup=back_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "start_back")
+async def on_start_back(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(START_TEXT, reply_markup=start_keyboard())
+    await callback.answer()
 
 
 @router.message(F.video | F.audio | F.voice | F.video_note)
@@ -195,6 +283,10 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+    gate = registration.RegistrationGate()
+    dp.message.outer_middleware(gate)
+    dp.callback_query.outer_middleware(gate)
+    dp.include_router(registration.router)
     dp.include_router(licensing_handlers.router)
     dp.include_router(router)
     await licensing_server.start()

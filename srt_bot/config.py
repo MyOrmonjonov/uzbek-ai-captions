@@ -30,6 +30,7 @@ if not GEMINI_API_KEY:
 # machine — keeps the keys off of every distributed plugin install.
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 GIPHY_API_KEY = os.getenv("GIPHY_API_KEY", "").strip()
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "").strip()
 
 TEMP_DIR = BASE_DIR / "temp"
 TEMP_DIR.mkdir(exist_ok=True)

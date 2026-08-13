@@ -156,15 +156,12 @@
                 <div id="preview-box" class="preview-box"></div>
             </div>
 
-            <section class="toggle-row">
-                <span class="toggle-icon" aria-hidden="true">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M4 6h16M12 6v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                    </svg>
-                </span>
-                <label class="toggle-label" for="kinetic-toggle">Kinetic Typography (so'z-so'z animatsiya)</label>
-                <button type="button" id="kinetic-toggle" class="toggle" role="switch" aria-checked="false"></button>
-            </section>
+            <button type="button" id="kinetic-toggle" class="btn kinetic-open-btn" role="switch" aria-checked="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 6h16M12 6v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <span>Reels animatsiya</span>
+            </button>
 
             <div id="kinetic-panel" class="translate-panel" hidden>
                 <div class="kinetic-grid-head">
@@ -187,6 +184,58 @@
                     </div>
                     <input type="range" id="kinetic-min-duration-slider" min="0.1" max="3.0" step="0.1" value="0.3" />
                 </div>
+
+                <p class="kinetic-style-note">Quyidagi ko'rinish sozlamalari faqat After Effects'da
+                    qo'llanadi — Premiere'da animatsiya shabloni (MOGRT) o'zining tayyor
+                    shrift/rangini saqlaydi, buni dasturiy o'zgartirish imkoni yo'q.</p>
+                <div class="field-row">
+                    <label for="kinetic-font-select">Shrift</label>
+                    <select id="kinetic-font-select" class="lang-select">
+                        <option value="Arial-BoldMT">Arial Bold</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Helvetica-Bold">Helvetica Bold</option>
+                        <option value="Verdana-Bold">Verdana Bold</option>
+                        <option value="TimesNewRomanPS-BoldMT">Times New Roman Bold</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label for="kinetic-color-input">Matn rangi</label>
+                    <input type="color" id="kinetic-color-input" class="color-input" value="#ffffff" />
+                </div>
+                <div class="field-row">
+                    <label for="kinetic-stroke-color-input">Kontur rangi</label>
+                    <input type="color" id="kinetic-stroke-color-input" class="color-input" value="#000000" />
+                </div>
+                <div class="field-row">
+                    <label for="kinetic-position-select">Joylashuvi</label>
+                    <select id="kinetic-position-select" class="lang-select">
+                        <option value="top">Yuqorida</option>
+                        <option value="center" selected>Markazda</option>
+                        <option value="bottom">Pastda</option>
+                    </select>
+                </div>
+                <div class="slider-field">
+                    <div class="slider-head">
+                        <span>O'lcham</span>
+                        <span id="kinetic-size-badge" class="badge">100%</span>
+                    </div>
+                    <input type="range" id="kinetic-size-slider" min="50" max="200" step="5" value="100" />
+                </div>
+
+                <p class="kinetic-style-note">Qo'shimcha vositalar — Timeline'da o'zingiz
+                    tanlagan (istalgan, transkripsiyaga bog'liq bo'lmagan) matn qatlamiga
+                    qo'llanadi. Faqat After Effects.</p>
+                <button type="button" id="kinetic-split-words-btn" class="btn">
+                    <span>So'zlarga ajratish</span>
+                </button>
+                <div class="field-row">
+                    <label for="kinetic-typing-duration-input">Yozuv kursor davomiyligi (s)</label>
+                    <input type="number" id="kinetic-typing-duration-input" class="lang-select"
+                        min="0.3" max="10" step="0.1" value="1.5" style="width:70px" />
+                </div>
+                <button type="button" id="kinetic-typing-cursor-btn" class="btn">
+                    <span>Yozuv kursor effekti qo'shish</span>
+                </button>
             </div>
         </div>
 

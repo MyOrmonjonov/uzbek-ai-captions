@@ -9,7 +9,7 @@ import sqlite3
 import time
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 import config
 
@@ -46,6 +46,17 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS free_usage (
             telegram_user_id INTEGER PRIMARY KEY,
             last_used_date TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            telegram_user_id INTEGER PRIMARY KEY,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            phone_number TEXT NOT NULL,
+            registered_at REAL NOT NULL
         )
         """
     )
@@ -179,3 +190,66 @@ def record_free_usage(telegram_user_id: int) -> None:
             (telegram_user_id, today),
         )
         conn.commit()
+
+
+@dataclass
+class UserProfile:
+    telegram_user_id: int
+    first_name: str
+    last_name: str
+    phone_number: str
+    registered_at: float
+
+
+def is_registered(telegram_user_id: int) -> bool:
+    with closing(_connect()) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM users WHERE telegram_user_id = ?", (telegram_user_id,)
+        ).fetchone()
+        return row is not None
+
+
+def register_user(telegram_user_id: int, first_name: str, last_name: str, phone_number: str) -> None:
+    with closing(_connect()) as conn:
+        conn.execute(
+            "INSERT INTO users (telegram_user_id, first_name, last_name, phone_number, registered_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(telegram_user_id) DO UPDATE SET first_name=excluded.first_name, "
+            "last_name=excluded.last_name, phone_number=excluded.phone_number",
+            (telegram_user_id, first_name, last_name, phone_number, time.time()),
+        )
+        conn.commit()
+
+
+def get_user(telegram_user_id: int) -> UserProfile | None:
+    with closing(_connect()) as conn:
+        row = conn.execute(
+            "SELECT telegram_user_id, first_name, last_name, phone_number, registered_at "
+            "FROM users WHERE telegram_user_id = ?",
+            (telegram_user_id,),
+        ).fetchone()
+        return UserProfile(*row) if row else None
+
+
+def days_since_registration(telegram_user_id: int) -> int | None:
+    profile = get_user(telegram_user_id)
+    if profile is None:
+        return None
+    # timedelta.days floors toward -inf, so a few-microsecond-negative delta (registered
+    # a moment ago, clock jitter between the write and this read) comes out as -1 rather
+    # than 0 -- clamp instead of showing a user "-1 kun oldin" right after they register.
+    seconds = (datetime.now() - datetime.fromtimestamp(profile.registered_at)).total_seconds()
+    return max(0, int(seconds // 86400))
+
+
+def get_active_licenses_for_user(telegram_user_id: int) -> list[tuple[str, float]]:
+    """Returns (device_code, days_left) for every non-revoked, unexpired license
+    bound to this Telegram user -- used for the bot's "Statistikam" view."""
+    now = time.time()
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT device_code, expires_at FROM licenses "
+            "WHERE telegram_user_id = ? AND revoked = 0 AND expires_at > ?",
+            (telegram_user_id, now),
+        ).fetchall()
+    return [(device_code, (expires_at - now) / 86400) for device_code, expires_at in rows]

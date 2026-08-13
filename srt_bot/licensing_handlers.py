@@ -23,6 +23,19 @@ import licensing
 logger = logging.getLogger(__name__)
 router = Router()
 
+# Set by bot.py's /start handler when the user arrived via a website "?start=<tariff_key>"
+# deep link, so that once they paste their device code below we can skip straight to
+# payment instructions for that tariff instead of asking them to pick one again.
+_pending_tariff_choice: dict[int, dict] = {}
+
+
+def set_pending_tariff(user_id: int, tariff: dict) -> None:
+    _pending_tariff_choice[user_id] = tariff
+
+
+def pop_pending_tariff(user_id: int) -> dict | None:
+    return _pending_tariff_choice.pop(user_id, None)
+
 # (?i) is embedded in the pattern text itself (not passed as a separate re.compile flag)
 # because the router filter below reads DEVICE_CODE_RE.pattern (the raw string) and
 # recompiles it fresh, which would otherwise silently drop a flag set only on this object —
@@ -73,9 +86,26 @@ def _admin_request_keyboard(device_code: str) -> InlineKeyboardMarkup:
     )
 
 
-@router.message(F.text.regexp(DEVICE_CODE_RE.pattern))
-async def on_device_code(message: Message) -> None:
-    device_code = message.text.strip().upper()
+async def _notify_admin_of_request(bot, device_code: str, tariff: dict, user_id: int, username: str) -> None:
+    if not config.ADMIN_TELEGRAM_ID:
+        logger.warning("ADMIN_TELEGRAM_ID sozlanmagan, admin xabar olmadi (%s)", device_code)
+        return
+    price = f"{tariff['price_som']:,} so'm".replace(",", " ")
+    await bot.send_message(
+        config.ADMIN_TELEGRAM_ID,
+        f"Yangi faollashtirish so'rovi\nQurilma kodi: <code>{device_code}</code>\n"
+        f"Tarif: {tariff['label']} ({price})\n"
+        f"Foydalanuvchi: {username} (id: {user_id})\n\n"
+        "To'lov chekini kutib, so'ng tasdiqlang:",
+        reply_markup=_admin_request_keyboard(device_code),
+    )
+
+
+async def handle_device_code(message: Message, device_code: str) -> None:
+    """Shared by the regex-matched message handler below (user pastes/types the code)
+    and bot.py's on_start (plugin's "Botga o'tish" button opens a "?start=<device_code>"
+    deep link) -- both end up needing to react to a device code the same way."""
+    device_code = device_code.strip().upper()
     user_id = message.from_user.id
 
     if _is_admin(user_id):
@@ -88,11 +118,26 @@ async def on_device_code(message: Message) -> None:
         )
         return
 
+    # Arrived here already knowing which tariff they want (website deep link -> bot.py's
+    # on_start stashed it) -- skip the "qaysi tarifni tanlaysiz" step entirely.
+    tariff = pop_pending_tariff(user_id)
+    if tariff is not None:
+        licensing.create_pending_request(device_code, user_id, tariff["days"], tariff["label"])
+        await message.answer(_payment_instructions(device_code, tariff))
+        username = f"@{message.from_user.username}" if message.from_user.username else str(user_id)
+        await _notify_admin_of_request(message.bot, device_code, tariff, user_id, username)
+        return
+
     await message.answer(
         f"Faollashtirish kodi qabul qilindi: <code>{device_code}</code>\n\n"
         "Qaysi tarifni tanlaysiz?",
         reply_markup=_tariff_keyboard(device_code),
     )
+
+
+@router.message(F.text.regexp(DEVICE_CODE_RE.pattern))
+async def on_device_code(message: Message) -> None:
+    await handle_device_code(message, message.text)
 
 
 @router.callback_query(F.data.startswith("tariff:"))
@@ -108,19 +153,8 @@ async def on_tariff_selected(callback: CallbackQuery) -> None:
     await callback.message.edit_text(_payment_instructions(device_code, tariff))
     await callback.answer()
 
-    if config.ADMIN_TELEGRAM_ID:
-        username = f"@{callback.from_user.username}" if callback.from_user.username else str(user_id)
-        price = f"{tariff['price_som']:,} so'm".replace(",", " ")
-        await callback.bot.send_message(
-            config.ADMIN_TELEGRAM_ID,
-            f"Yangi faollashtirish so'rovi\nQurilma kodi: <code>{device_code}</code>\n"
-            f"Tarif: {tariff['label']} ({price})\n"
-            f"Foydalanuvchi: {username} (id: {user_id})\n\n"
-            "To'lov chekini kutib, so'ng tasdiqlang:",
-            reply_markup=_admin_request_keyboard(device_code),
-        )
-    else:
-        logger.warning("ADMIN_TELEGRAM_ID sozlanmagan, admin xabar olmadi (%s)", device_code)
+    username = f"@{callback.from_user.username}" if callback.from_user.username else str(user_id)
+    await _notify_admin_of_request(callback.bot, device_code, tariff, user_id, username)
 
 
 @router.message(F.photo, F.chat.type == "private")
