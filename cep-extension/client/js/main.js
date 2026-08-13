@@ -830,18 +830,21 @@
         });
     }
 
-    fetch(API_BASE + '/api/health')
-        .then(function (res) {
-            if (!res.ok) {
-                throw new Error();
-            }
-            els.connDot.className = 'conn-dot ok';
-            els.connDot.title = 'Backend ishlayapti.';
-        })
-        .catch(function () {
-            els.connDot.className = 'conn-dot error';
-            els.connDot.title = "Backend serverga ulanib bo'lmadi. run-server.bat ishga tushirilganini tekshiring.";
-        });
+    function checkBackendConnection() {
+        fetch(API_BASE + '/api/health')
+            .then(function (res) {
+                if (!res.ok) {
+                    throw new Error();
+                }
+                els.connDot.className = 'conn-dot ok';
+                els.connDot.title = 'Backend ishlayapti.';
+            })
+            .catch(function () {
+                els.connDot.className = 'conn-dot error';
+                els.connDot.title = "Backend serverga ulanib bo'lmadi. run-server.bat ishga tushirilganini tekshiring.";
+            });
+    }
+    checkBackendConnection();
 
     var REASON_TEXT = {
         not_activated: "Hali faollashtirilmagan. Quyidagi kodni botga yuboring.",
@@ -1350,12 +1353,141 @@
         } catch (e) { /* not critical to panel function */ }
     }
 
+    // ════════════════ Backend (Java) avtomatik yangilanishi ════════════════
+    // The backend can't safely replace its own running .exe/.app while executing (Windows
+    // locks the file; swapping a macOS bundle's binary out from under a running process is
+    // just as fragile), so this panel -- a separate process that only talks to it over HTTP,
+    // never loads its files directly -- does the kill/replace/relaunch instead. Unlike the
+    // plugin's own update (staged and applied on next Premiere launch, since Premiere has the
+    // panel's files open right now), this can happen immediately.
+    var BACKEND_INSTALL_DIR = process.platform === 'win32'
+        ? nodePath.join(process.env.LOCALAPPDATA || '', 'RavonCaptions', 'Backend')
+        : nodePath.join(process.env.HOME || '', 'Applications', 'RavonCaptionsBackend.app');
+    var BACKEND_EXE_NAME = process.platform === 'win32' ? 'UzbekAiCaptionsBackend.exe' : 'RavonCaptionsBackend';
+
+    function getInstalledBackendVersion() {
+        return fetch(API_BASE + '/api/version', { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : { version: null }; })
+            .then(function (body) { return body.version || null; })
+            .catch(function () { return null; });
+    }
+
+    function getLatestBackendInfo() {
+        return new Promise(function (resolve) {
+            try {
+                nodeHttps.get({
+                    hostname: UPDATE_HOST, path: '/backend/version',
+                    headers: { 'User-Agent': 'UzbekAiCaptions/' + PLUGIN_VERSION },
+                    timeout: 8000,
+                }, function (res) {
+                    var chunks = [];
+                    res.on('data', function (c) { chunks.push(c); });
+                    res.on('end', function () {
+                        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+                        catch (e) { resolve(null); }
+                    });
+                }).on('error', function () { resolve(null); });
+            } catch (e) { resolve(null); }
+        });
+    }
+
+    function killBackendProcess() {
+        var cp = require('child_process');
+        try {
+            if (process.platform === 'win32') {
+                cp.execSync('taskkill /IM ' + BACKEND_EXE_NAME + ' /F', { windowsHide: true });
+            } else {
+                cp.execSync('pkill -f "' + BACKEND_EXE_NAME + '"');
+            }
+        } catch (e) { /* already not running -- fine */ }
+    }
+
+    function relaunchBackend() {
+        var cp = require('child_process');
+        if (process.platform === 'win32') {
+            cp.spawn(nodePath.join(BACKEND_INSTALL_DIR, BACKEND_EXE_NAME), [], { detached: true, stdio: 'ignore', cwd: BACKEND_INSTALL_DIR }).unref();
+        } else {
+            cp.spawn('open', [BACKEND_INSTALL_DIR], { detached: true, stdio: 'ignore' }).unref();
+        }
+    }
+
+    // Windows' Compress-Archive and macOS' ditto both zip the app folder/bundle itself as a
+    // top-level entry (not just its contents) -- same "one level deeper than expected" shape
+    // the plugin update's own unzip already accounts for above.
+    function findBackendRoot(unzipped, markerName) {
+        if (nodeFs.existsSync(nodePath.join(unzipped, markerName))) {
+            return unzipped;
+        }
+        var entries = nodeFs.readdirSync(unzipped)
+            .map(function (n) { return nodePath.join(unzipped, n); })
+            .filter(function (p) { try { return nodeFs.statSync(p).isDirectory(); } catch (e) { return false; } });
+        for (var i = 0; i < entries.length; i++) {
+            if (nodeFs.existsSync(nodePath.join(entries[i], markerName))) {
+                return entries[i];
+            }
+        }
+        return null;
+    }
+
+    function updateBackend(downloadUrl, version) {
+        var tmpDir = nodeOs.tmpdir();
+        var zipPath = nodePath.join(tmpDir, 'ravon-backend-update-' + Date.now() + '.zip');
+        var unzipped = nodePath.join(tmpDir, 'ravon-backend-unzip-' + Date.now());
+
+        return downloadFile('https://' + UPDATE_HOST + downloadUrl, zipPath).then(function () {
+            unzipTo(zipPath, unzipped);
+            var marker = process.platform === 'win32' ? BACKEND_EXE_NAME : 'RavonCaptionsBackend.app';
+            var root = findBackendRoot(unzipped, marker);
+            if (!root) throw new Error('Backend paketi ichida dastur topilmadi.');
+
+            killBackendProcess();
+
+            // taskkill/pkill return as soon as the signal is sent, not once the process has
+            // actually released its file handles -- copying over it a beat too early is how
+            // you get an intermittent EBUSY/EPERM on Windows. install.bat waits the same way.
+            return new Promise(function (resolve) { setTimeout(resolve, 2000); }).then(function () {
+                if (process.platform === 'win32') {
+                    nodeFs.mkdirSync(BACKEND_INSTALL_DIR, { recursive: true });
+                    copyDir(root, BACKEND_INSTALL_DIR);
+                } else {
+                    rmrf(BACKEND_INSTALL_DIR);
+                    copyDir(nodePath.join(root, 'RavonCaptionsBackend.app'), BACKEND_INSTALL_DIR);
+                    try { require('child_process').execSync('xattr -cr "' + BACKEND_INSTALL_DIR + '"'); } catch (e) {}
+                }
+                relaunchBackend();
+                return version;
+            });
+        }).finally(function () {
+            try { nodeFs.unlinkSync(zipPath); } catch (e) {}
+            rmrf(unzipped);
+        });
+    }
+
+    function checkBackendUpdate() {
+        if (!nodeHttps || !nodeFs) return;
+        getLatestBackendInfo().then(function (latest) {
+            if (!latest || !latest.latestVersion) return;
+            getInstalledBackendVersion().then(function (installed) {
+                if (installed && !isNewerVersion(latest.latestVersion, installed)) {
+                    return;
+                }
+                var url = latest.downloadUrl && (process.platform === 'win32' ? latest.downloadUrl.windows : latest.downloadUrl.mac);
+                if (!url) return;
+                updateBackend(url, latest.latestVersion).then(function (version) {
+                    showUpdateNotice("Backend yangilandi (" + version + ") — bir necha soniyada qayta ulanadi.");
+                    setTimeout(checkBackendConnection, 4000);
+                }).catch(function () { /* will retry next boot */ });
+            });
+        });
+    }
+
     (function bootUpdate() {
         var applied = applyPendingUpdate();
         if (applied && applied.version) {
             setStatus("Yangilandi — " + applied.version + ". Yangi imkoniyatlar Premiere qayta ochilganda faol bo'ladi.", 'ok');
         }
         checkForUpdate();
+        checkBackendUpdate();
     })();
 
     refreshLicenseStatus();

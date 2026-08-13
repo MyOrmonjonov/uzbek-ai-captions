@@ -21,6 +21,7 @@ ZIP_FILE = RELEASE_DIR / "uzbek-ai-captions.zip"
 BACKEND_DIR = RELEASE_DIR / "backend"
 BACKEND_WINDOWS_FILE = BACKEND_DIR / "UzbekAiCaptionsBackend-windows.zip"
 BACKEND_MAC_FILE = BACKEND_DIR / "UzbekAiCaptionsBackend-mac.zip"
+BACKEND_VERSION_FILE = BACKEND_DIR / "VERSION"
 
 # Single combined package (plugin + backend + one install script) per platform — what the
 # website's download button actually links to, so a customer runs exactly one installer instead
@@ -41,6 +42,16 @@ async def handle_download(request: web.Request) -> web.Response:
     if not ZIP_FILE.exists():
         return web.json_response({"error": "no_release"}, status=404)
     return web.FileResponse(ZIP_FILE)
+
+
+async def handle_backend_version(request: web.Request) -> web.Response:
+    if not BACKEND_VERSION_FILE.exists():
+        return web.json_response({"latestVersion": None})
+    version = BACKEND_VERSION_FILE.read_text(encoding="utf-8").strip()
+    return web.json_response({
+        "latestVersion": version,
+        "downloadUrl": {"windows": "/backend/windows", "mac": "/backend/mac"},
+    })
 
 
 async def handle_backend_windows(request: web.Request) -> web.Response:
@@ -70,6 +81,7 @@ async def handle_installer_mac(request: web.Request) -> web.Response:
 def register(app: web.Application) -> None:
     app.router.add_get("/plugin/version", handle_version)
     app.router.add_get("/plugin/download", handle_download)
+    app.router.add_get("/backend/version", handle_backend_version)
     app.router.add_get("/backend/windows", handle_backend_windows)
     app.router.add_get("/backend/mac", handle_backend_mac)
     app.router.add_get("/download/windows", handle_installer_windows)

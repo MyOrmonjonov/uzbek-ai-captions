@@ -37,6 +37,9 @@ build/
 ### App-local secrets ###
 application-local.properties
 
+### Written by CI right before packaging (see build-backend.yml) ###
+src/main/resources/backend-version.txt
+
 ### Logs ###
 *.log
 

@@ -61,6 +61,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path app-content/ffmpeg | Out-Null
           Copy-Item $bin.FullName app-content/ffmpeg/ffmpeg.exe
 
+      - name: Write backend version
+        shell: pwsh
+        run: Set-Content -Path src\main\resources\backend-version.txt -Value "1.0.${{ github.run_number }}" -NoNewline -Encoding utf8
+
       - name: Build jar
         run: .\mvnw.cmd -q -DskipTests package
         shell: cmd
@@ -125,6 +129,9 @@ jobs:
           ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
             "mkdir -p /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            src/main/resources/backend-version.txt \
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/VERSION
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             "${APP_NAME}-windows.zip" \
             appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-windows.zip
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
@@ -151,6 +158,9 @@ jobs:
           mkdir -p app-content/Resources/ffmpeg
           cp ffmpeg-extracted/ffmpeg app-content/Resources/ffmpeg/ffmpeg
           chmod +x app-content/Resources/ffmpeg/ffmpeg
+
+      - name: Write backend version
+        run: echo -n "1.0.${{ github.run_number }}" > src/main/resources/backend-version.txt
 
       - name: Build jar
         run: |
@@ -194,6 +204,9 @@ jobs:
           chmod 600 ~/.ssh/aws_key.pem
           ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
             "mkdir -p /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer"
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            src/main/resources/backend-version.txt \
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/VERSION
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             "RavonCaptionsBackend-mac.zip" \
             appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.zip
