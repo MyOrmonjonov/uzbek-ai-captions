@@ -78,6 +78,17 @@ final class BundledFfmpegResolver {
             Path[] candidates = {
                     root.resolve("ffmpeg").resolve(exeName),
                     root.resolve("Resources").resolve("ffmpeg").resolve(exeName),
+                    // jpackage's --app-content <dir> copies <dir> itself into the app image root
+                    // (not just its contents) -- the build workflow stages the ffmpeg binary
+                    // under a local "app-content" folder, so it lands at
+                    // <root>/app-content/ffmpeg/<exe> on Windows and
+                    // <root>/app-content/Resources/ffmpeg/<exe> on macOS, one level deeper than
+                    // the two candidates above assumed. Confirmed against a real installed app
+                    // image after "Premiere works, After Effects can't find ffmpeg" turned out to
+                    // be this path mismatch (AE's export doesn't hit the mono/16kHz fast-path in
+                    // AudioExtractionService, so it's the one host that actually needs this).
+                    root.resolve("app-content").resolve("ffmpeg").resolve(exeName),
+                    root.resolve("app-content").resolve("Resources").resolve("ffmpeg").resolve(exeName),
             };
             for (Path candidate : candidates) {
                 tried.add(candidate);

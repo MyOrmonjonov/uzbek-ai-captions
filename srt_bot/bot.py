@@ -48,7 +48,9 @@ START_TEXT = (
     "1 qator — Reels/Shorts uchun\n"
     "2 qator — standart\n"
     "3 qator — ko'p matn uchun\n\n"
-    "Tayyor SRT faylni CapCut, Premiere, DaVinci — istalgan dasturga tashlashingiz mumkin."
+    "Tayyor SRT faylni CapCut, Premiere, DaVinci — istalgan dasturga tashlashingiz mumkin.\n\n"
+    "Premiere/After Effects panelidan faollashtirish kodi bilan keldingizmi? "
+    "Kodni (nusxalangan bo'lishi kerak) shu yerga tashlang."
 )
 
 _MAX_FILE_MB = config.MAX_FILE_SIZE_BYTES // (1024 * 1024)

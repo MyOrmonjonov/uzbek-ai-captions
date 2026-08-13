@@ -910,16 +910,23 @@
         }
     });
 
-    // Opens the bot with the device code as a "?start=" deep-link payload (bot.py reads
-    // it via CommandObject and feeds it straight into the same device-code handling
-    // on_device_code uses for a pasted code) so the user doesn't have to copy/paste the
-    // code by hand into the chat.
+    // Used to open the bot with the device code as a "?start=" deep-link payload, but
+    // Telegram only auto-fires that payload for a brand-new chat -- a user (e.g. the admin
+    // testing a second device) who already has history with the bot just gets the chat
+    // opened with the code silently dropped, no error, nothing to explain why activation
+    // never happened. Copying the code to the clipboard and opening a plain chat instead
+    // is slower by one paste but never silently fails: bot.py's START_TEXT tells the user
+    // to paste it, and on_device_code (the same regex handler a manually-typed code hits)
+    // picks it up from there.
     els.openBotBtn.addEventListener('click', function () {
         var code = els.deviceCodeText.textContent;
         if (!code || code === '...') {
             return;
         }
-        csInterface.openURLInDefaultBrowser('https://t.me/ravoncaptions_bot?start=' + encodeURIComponent(code));
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code);
+        }
+        csInterface.openURLInDefaultBrowser('https://t.me/ravoncaptions_bot');
     });
 
     els.activateBtn.addEventListener('click', function () {

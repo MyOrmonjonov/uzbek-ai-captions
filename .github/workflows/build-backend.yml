@@ -122,17 +122,17 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/aws_key.pem
           chmod 600 ~/.ssh/aws_key.pem
-          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no ubuntu@aitilmoch.duckdns.org \
-            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer"
+          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
+            "mkdir -p /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             "${APP_NAME}-windows.zip" \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-windows.zip
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-windows.zip
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             RavonCaptions-windows.zip \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-windows.zip
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-windows.zip
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             uzbek-ai-captions.zip VERSION \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/
 
   build-mac:
     runs-on: macos-latest
@@ -192,11 +192,11 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/aws_key.pem
           chmod 600 ~/.ssh/aws_key.pem
-          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no ubuntu@aitilmoch.duckdns.org \
-            "mkdir -p /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend /home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer"
+          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
+            "mkdir -p /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             "${APP_NAME}-mac.zip" \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.zip
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.zip
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             RavonCaptions-mac.zip \
-            ubuntu@aitilmoch.duckdns.org:/home/ubuntu/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-mac.zip
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-mac.zip
