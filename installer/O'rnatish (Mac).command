@@ -15,7 +15,7 @@ echo
 # almashtirilsa ham (rm -rf + cp -R macOS'da ishlayotgan .app ustida ham ishlaydi), eski
 # jarayon xotirada davom etib, yangi nusxa ishga tushganda bir xil portni band qilib qo'yishi
 # mumkin — shu sabab avval majburan to'xtatiladi.
-pkill -f "UzbekAiCaptionsBackend" 2>/dev/null || true
+pkill -f "RavonCaptionsBackend" 2>/dev/null || true
 sleep 1
 
 # --- 1) Premiere/AE panelini o'rnatish ---
@@ -31,9 +31,9 @@ done
 
 # --- 2) Backend dasturini doimiy joyga o'rnatish ---
 mkdir -p "$APPS_DEST"
-rm -rf "$APPS_DEST/UzbekAiCaptionsBackend.app"
-cp -R "$SRC/backend/UzbekAiCaptionsBackend.app" "$APPS_DEST/UzbekAiCaptionsBackend.app"
-xattr -cr "$APPS_DEST/UzbekAiCaptionsBackend.app" 2>/dev/null || true
+rm -rf "$APPS_DEST/RavonCaptionsBackend.app"
+cp -R "$SRC/backend/RavonCaptionsBackend.app" "$APPS_DEST/RavonCaptionsBackend.app"
+xattr -cr "$APPS_DEST/RavonCaptionsBackend.app" 2>/dev/null || true
 
 # --- 3) Kompyuterga kirganda avtomatik ishga tushirish ---
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -46,7 +46,7 @@ cat > "$PLIST" <<PLISTEOF
     <string>uz.ravoncaptions.backend</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$APPS_DEST/UzbekAiCaptionsBackend.app/Contents/MacOS/UzbekAiCaptionsBackend</string>
+        <string>$APPS_DEST/RavonCaptionsBackend.app/Contents/MacOS/RavonCaptionsBackend</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -60,7 +60,7 @@ launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST" 2>/dev/null || true
 
 # --- 4) Hoziroq ishga tushirish ---
-open "$APPS_DEST/UzbekAiCaptionsBackend.app"
+open "$APPS_DEST/RavonCaptionsBackend.app"
 
 echo
 echo "O'rnatildi!"
@@ -70,6 +70,6 @@ echo "  1. Premiere Pro yoki After Effects'ni yoping va qayta oching"
 echo "  2. Window > Extensions > Ravon Captions"
 echo
 echo "Eslatma: agar 'noma'lum dasturchi' ogohlantirishi chiqsa, Finder'da"
-echo "UzbekAiCaptionsBackend'ga o'ng tugma bilan bosib 'Open'ni tanlang."
+echo "RavonCaptionsBackend'ga o'ng tugma bilan bosib 'Open'ni tanlang."
 echo
 read -p "Davom etish uchun Enter bosing..."

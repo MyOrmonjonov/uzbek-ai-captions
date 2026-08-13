@@ -162,14 +162,14 @@ jobs:
           mkdir -p jpackage-input
           cp target/Plugin-0.0.1-SNAPSHOT.jar jpackage-input/
           jpackage --input jpackage-input \
-            --name "$APP_NAME" \
+            --name "RavonCaptionsBackend" \
             --main-jar Plugin-0.0.1-SNAPSHOT.jar \
             --type app-image \
             --dest jpackage-out \
             --app-version "$APP_VERSION" \
-            --vendor "Uzbek AI Captions" \
+            --vendor "Ravon Captions" \
             --app-content app-content
-          ditto -c -k --sequesterRsrc "jpackage-out/${APP_NAME}.app" "${APP_NAME}-mac.zip"
+          ditto -c -k --sequesterRsrc "jpackage-out/RavonCaptionsBackend.app" "RavonCaptionsBackend-mac.zip"
 
       - name: Obfuscate plugin source (client/js/main.js, host/index.jsx)
         run: bash scripts/obfuscate-plugin.sh cep-extension cep-extension-obf
@@ -180,7 +180,7 @@ jobs:
           cp -R cep-extension-obf/CSXS combined/plugin/CSXS
           cp -R cep-extension-obf/client combined/plugin/client
           cp -R cep-extension-obf/host combined/plugin/host
-          cp -R "jpackage-out/${APP_NAME}.app" "combined/backend/${APP_NAME}.app"
+          cp -R "jpackage-out/RavonCaptionsBackend.app" "combined/backend/RavonCaptionsBackend.app"
           cp "installer/O'rnatish (Mac).command" combined/
           chmod +x "combined/O'rnatish (Mac).command"
           ditto -c -k --sequesterRsrc combined RavonCaptions-mac.zip
@@ -195,7 +195,7 @@ jobs:
           ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
             "mkdir -p /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend /home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer"
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
-            "${APP_NAME}-mac.zip" \
+            "RavonCaptionsBackend-mac.zip" \
             appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/backend/UzbekAiCaptionsBackend-mac.zip
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             RavonCaptions-mac.zip \

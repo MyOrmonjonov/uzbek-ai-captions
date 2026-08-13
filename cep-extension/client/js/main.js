@@ -900,14 +900,36 @@
             });
     }
 
+    // navigator.clipboard silently no-ops in CEP's embedded Chromium (file:// isn't treated
+    // as a secure context, so the Promise it returns just rejects with nothing shown to the
+    // user) -- shelling out to the OS clipboard tool is what actually works here, same as the
+    // "Botga o'tish" button below now does for the same reason.
+    function copyToClipboard(text) {
+        try {
+            var cp = require('child_process');
+            var platform = nodeOs.platform();
+            if (platform === 'win32') {
+                var winProc = cp.spawn('clip');
+                winProc.stdin.end(text);
+            } else if (platform === 'darwin') {
+                var macProc = cp.spawn('pbcopy');
+                macProc.stdin.end(text);
+            } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+            }
+        } catch (e) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+            }
+        }
+    }
+
     els.copyCodeBtn.addEventListener('click', function () {
         var code = els.deviceCodeText.textContent;
         if (!code || code === '...') {
             return;
         }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(code);
-        }
+        copyToClipboard(code);
     });
 
     // Used to open the bot with the device code as a "?start=" deep-link payload, but
@@ -923,9 +945,7 @@
         if (!code || code === '...') {
             return;
         }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(code);
-        }
+        copyToClipboard(code);
         csInterface.openURLInDefaultBrowser('https://t.me/ravoncaptions_bot');
     });
 
