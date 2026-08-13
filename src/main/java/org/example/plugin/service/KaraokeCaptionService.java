@@ -150,13 +150,17 @@ public class KaraokeCaptionService {
         // ASS paths go through libass's own mini-language where ':' and '\' are special, so on
         // Windows an absolute path like "C:\...\captions.ass" must be escaped before being
         // embedded in the -vf filtergraph string, not passed as a separate argument (ffmpeg's
-        // filter option parsing, not shell quoting, is what needs this).
+        // filter option parsing, not shell quoting, is what needs this). Escaping alone was
+        // verified NOT enough on its own -- ffmpeg's filtergraph parser still mis-split the
+        // value at the drive-letter colon and dropped everything before it (confirmed by hand:
+        // "ass=C\:\\Users\\..." failed, "ass='C\:\\Users\\...'" succeeded) -- the escaped path
+        // additionally needs to be wrapped in single quotes.
         String escapedAssPath = assPath.toString().replace("\\", "\\\\").replace(":", "\\:");
         List<String> command = List.of(
                 properties.getFfmpegPath(),
                 "-y",
                 "-i", videoPath.toString(),
-                "-vf", "ass=" + escapedAssPath,
+                "-vf", "ass='" + escapedAssPath + "'",
                 "-c:a", "copy",
                 outputPath.toString()
         );

@@ -1533,6 +1533,30 @@
         card.type = 'button';
         card.className = 'kinetic-card' + (style.key === selectedKaraokeStyle ? ' selected' : '');
 
+        var media = document.createElement('div');
+        media.className = 'kinetic-card-media';
+
+        // Same idea as the kinetic MOGRT previews: a short looping clip of the actual style
+        // (same ffmpeg/ASS pipeline the real export uses, rendered once at build time against a
+        // fixed sample phrase) beats guessing what "TikTok Bold" looks like from its name alone.
+        var video = document.createElement('video');
+        video.src = 'assets/karaoke-previews/' + style.key + '.mp4';
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.addEventListener('error', function () {
+            video.style.display = 'none';
+        });
+        media.appendChild(video);
+
+        var check = document.createElement('span');
+        check.className = 'kinetic-card-check';
+        check.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l5 5L19 7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        media.appendChild(check);
+
+        card.appendChild(media);
+
         var label = document.createElement('span');
         label.className = 'kinetic-card-label';
         label.textContent = style.displayName;
