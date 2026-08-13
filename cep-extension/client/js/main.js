@@ -7,6 +7,7 @@
     // every kinetic-typography evalScript call.
     var MOGRT_FOLDER = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/mogrt';
     var EXPORT_PRESET_PATH = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/export-presets/audio_wav_mono_16k.epr';
+    var VIDEO_EXPORT_PRESET_PATH = csInterface.getSystemPath(SystemPath.EXTENSION) + '/host/assets/export-presets/video_h264_match_source.epr';
 
     // Node integration (manifest.xml has --enable-nodejs) — used for sequence-audio export
     // (temp file paths) and the auto-update mechanism further down.
@@ -43,6 +44,35 @@
                 function (result) {
                     if (!result || result.indexOf('ERROR:') === 0) {
                         reject(new Error((result || '').replace(/^ERROR:\s*/, '') || "Audio eksport qilib bo'lmadi."));
+                        return;
+                    }
+                    resolve(result);
+                }
+            );
+        });
+    }
+
+    /**
+     * Renders the active sequence to a video file (exportActiveSequenceVideo() in
+     * host/index.jsx) for the karaoke-caption feature — the burned-in captions need an actual
+     * video, not just the audio exportSequenceAudioForTranscribe() produces. Premiere only for
+     * v1 (see host/index.jsx's comment on why). Returns a Promise resolving to the exported
+     * video's path.
+     */
+    function exportSequenceVideoForKaraoke() {
+        return new Promise(function (resolve, reject) {
+            if (!nodeFs || !nodePath || !nodeOs) {
+                reject(new Error("Node integratsiyasi mavjud emas."));
+                return;
+            }
+            var outputPath = nodePath.join(nodeOs.tmpdir(), 'ravon-captions-seqvideo-' + Date.now() + '.mp4');
+            var escapedOut = escapeForEval(outputPath);
+            var escapedPreset = escapeForEval(VIDEO_EXPORT_PRESET_PATH);
+            csInterface.evalScript(
+                'exportActiveSequenceVideo("' + escapedOut + '", "' + escapedPreset + '")',
+                function (result) {
+                    if (!result || result.indexOf('ERROR:') === 0) {
+                        reject(new Error((result || '').replace(/^ERROR:\s*/, '') || "Video eksport qilib bo'lmadi."));
                         return;
                     }
                     resolve(result);
@@ -130,6 +160,10 @@
         kineticTypingDurationInput: document.getElementById('kinetic-typing-duration-input'),
         kineticTypingCursorBtn: document.getElementById('kinetic-typing-cursor-btn'),
         kineticBtn: document.getElementById('kinetic-btn'),
+        karaokeToggle: document.getElementById('karaoke-toggle'),
+        karaokePanel: document.getElementById('karaoke-panel'),
+        karaokeStyleGrid: document.getElementById('karaoke-style-grid'),
+        karaokeGenerateBtn: document.getElementById('karaoke-generate-btn'),
         resultsPanel: document.getElementById('results-panel'),
         progressRingLabel: document.getElementById('progress-ring-label'),
         licenseBadge: document.getElementById('license-badge'),
@@ -161,6 +195,7 @@
     var kineticPage = 0;
     var kineticShowAllFlag = false;
     var KINETIC_PAGE_SIZE = 6;
+    var selectedKaraokeStyle = null;
 
     segmentButtons.forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -195,6 +230,7 @@
     setupToggle(els.translateToggle, els.translatePanel);
     setupToggle(els.advancedToggle, els.advancedPanel);
     setupToggle(els.kineticToggle, els.kineticPanel);
+    setupToggle(els.karaokeToggle, els.karaokePanel);
 
     els.kineticMinDurationSlider.addEventListener('input', function () {
         els.kineticMinDurationBadge.textContent = parseFloat(els.kineticMinDurationSlider.value).toFixed(1) + 's';
@@ -269,6 +305,8 @@
         els.kineticToggle.disabled = isBusy;
         els.kineticSplitWordsBtn.disabled = isBusy;
         els.kineticTypingCursorBtn.disabled = isBusy;
+        els.karaokeToggle.disabled = isBusy;
+        els.karaokeGenerateBtn.disabled = isBusy;
     }
 
     // csi.evalScript()'s callback is the ONLY thing that ever updates #file-path-text away from
@@ -1481,6 +1519,122 @@
         });
     }
 
+    // ════════════════ Karaoke caption (rangli, so'z-baso'z animatsiyali) ════════════════
+    function selectKaraokeCard(card, key) {
+        selectedKaraokeStyle = key;
+        Array.prototype.slice.call(els.karaokeStyleGrid.querySelectorAll('.kinetic-card')).forEach(function (c) {
+            c.classList.remove('selected');
+        });
+        card.classList.add('selected');
+    }
+
+    function buildKaraokeCard(style) {
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'kinetic-card' + (style.key === selectedKaraokeStyle ? ' selected' : '');
+
+        var label = document.createElement('span');
+        label.className = 'kinetic-card-label';
+        label.textContent = style.displayName;
+        card.appendChild(label);
+
+        card.addEventListener('click', function () {
+            selectKaraokeCard(card, style.key);
+        });
+        return card;
+    }
+
+    function loadKaraokeStyles() {
+        fetch(API_BASE + '/api/karaoke-styles')
+            .then(function (res) { return res.ok ? res.json() : []; })
+            .then(function (styles) {
+                els.karaokeStyleGrid.innerHTML = '';
+                if (!styles.length) {
+                    return;
+                }
+                if (!selectedKaraokeStyle) {
+                    selectedKaraokeStyle = styles[0].key;
+                }
+                styles.forEach(function (style) {
+                    els.karaokeStyleGrid.appendChild(buildKaraokeCard(style));
+                });
+            })
+            .catch(function () { /* karaoke panel just stays empty — not critical to boot */ });
+    }
+
+    function pollKaraokeJob(jobId) {
+        return new Promise(function (resolve, reject) {
+            function tick() {
+                fetch(API_BASE + '/api/karaoke-caption/status/' + jobId)
+                    .then(function (res) { return res.json(); })
+                    .then(function (body) {
+                        if (body.status === 'error') {
+                            reject(new Error(body.error || 'Karaoke video yaratilmadi.'));
+                        } else if (body.status === 'done') {
+                            resolve(body.outputPath);
+                        } else {
+                            setTimeout(tick, 1500);
+                        }
+                    })
+                    .catch(reject);
+            }
+            tick();
+        });
+    }
+
+    els.karaokeGenerateBtn.addEventListener('click', function () {
+        if (!lastWords || !lastWords.length) {
+            setStatus("Avval \"Subtitr yaratish\"ni bosing.", 'error');
+            return;
+        }
+        if (!selectedKaraokeStyle) {
+            setStatus('Karaoke stilini tanlang.', 'error');
+            return;
+        }
+        setBusy(true);
+        els.karaokeGenerateBtn.classList.add('busy');
+        setStatus('Sequence video eksport qilinmoqda...', 'busy');
+
+        exportSequenceVideoForKaraoke()
+            .then(function (videoPath) {
+                setStatus('Karaoke caption kuydirilmoqda (bir necha daqiqa davom etishi mumkin)...', 'busy');
+                return fetch(API_BASE + '/api/karaoke-caption', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoPath: videoPath, words: lastWords, styleKey: selectedKaraokeStyle }),
+                });
+            })
+            .then(function (res) { return res.json().then(function (body) { return { res: res, body: body }; }); })
+            .then(function (r) {
+                if (!r.res.ok) {
+                    throw new Error(r.body.error || 'Karaoke so\'rovi rad etildi.');
+                }
+                return pollKaraokeJob(r.body.jobId);
+            })
+            .then(function (outputPath) {
+                setStatus('Karaoke video loyihaga qo\'shilmoqda...', 'busy');
+                return new Promise(function (resolve, reject) {
+                    csInterface.evalScript('importKaraokeVideo("' + escapeForEval(outputPath) + '")', function (result) {
+                        if (!result || result.indexOf('ERROR:') === 0) {
+                            reject(new Error((result || '').replace(/^ERROR:\s*/, '') || "Video import qilinmadi."));
+                            return;
+                        }
+                        resolve();
+                    });
+                });
+            })
+            .then(function () {
+                setStatus('Karaoke video tayyor — loyiha bin\'iga qo\'shildi.', 'ok');
+            })
+            .catch(function (err) {
+                setStatus(err.message || String(err), 'error');
+            })
+            .finally(function () {
+                setBusy(false);
+                els.karaokeGenerateBtn.classList.remove('busy');
+            });
+    });
+
     (function bootUpdate() {
         var applied = applyPendingUpdate();
         if (applied && applied.version) {
@@ -1493,4 +1647,5 @@
     refreshLicenseStatus();
     detectActiveMedia();
     loadKineticStyles();
+    loadKaraokeStyles();
 })();

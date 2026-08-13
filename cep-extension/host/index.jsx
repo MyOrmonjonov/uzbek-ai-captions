@@ -344,6 +344,62 @@ function exportActiveSequenceAudio(outputPath, presetPath) {
     }
 }
 
+/**
+ * Renders the active sequence to a video file (Premiere only for v1 — After Effects has no
+ * equivalent "sequence" render path; it renders compositions through the render queue instead,
+ * which needs its own separate implementation). Structurally identical to
+ * exportActiveSequenceAudio() above (exportAsMediaDirect doesn't care whether the preset it's
+ * given targets audio or video), kept as its own function rather than a shared parameter because
+ * the two need different error messages and different AE handling.
+ */
+function exportActiveSequenceVideo(outputPath, presetPath) {
+    try {
+        if (BridgeTalk.appName !== "premierepro") {
+            return "ERROR: Karaoke video eksporti hozircha faqat Premiere Pro'da ishlaydi.";
+        }
+        if (!app.project) {
+            return "ERROR: Premiere'da ochiq loyiha topilmadi.";
+        }
+        var sequence = app.project.activeSequence;
+        if (!sequence) {
+            return "ERROR: Ochiq sequence (timeline) topilmadi. Avval bir sequence oching.";
+        }
+        var presetFile = new File(presetPath);
+        if (!presetFile.exists) {
+            return "ERROR: Video eksport shabloni topilmadi (" + presetPath + ").";
+        }
+        var outFile = new File(outputPath);
+        if (outFile.exists) {
+            try { outFile.remove(); } catch (eRemove) {}
+        }
+        var result = sequence.exportAsMediaDirect(outFile.fsName, presetFile.fsName, 0);
+        var check = new File(outputPath);
+        if (!check.exists) {
+            return "ERROR: Video yaratilmadi. Natija: " + String(result);
+        }
+        return outputPath;
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    }
+}
+
+/** Imports the finished karaoke video into the project bin (not placed on the timeline —
+ * unlike captions/B-roll this is a whole rendered clip, so where it belongs is the user's call). */
+function importKaraokeVideo(videoPath) {
+    try {
+        if (!app.project) {
+            return "ERROR: Loyiha topilmadi.";
+        }
+        var item = importSingleFile(videoPath);
+        if (!item) {
+            return "ERROR: Video loyihaga import qilinmadi.";
+        }
+        return "OK";
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    }
+}
+
 // Track.overwriteClip()'s "time" parameter is documented as a String in ticks, not seconds
 // — passing raw seconds (e.g. "12.5") silently resolves to ~0, which is why clips always
 // landed at the very start of the track instead of at the requested offset.

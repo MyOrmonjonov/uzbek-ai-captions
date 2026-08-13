@@ -237,6 +237,26 @@
                     <span>Yozuv kursor effekti qo'shish</span>
                 </button>
             </div>
+
+            <button type="button" id="karaoke-toggle" class="btn kinetic-open-btn" role="switch" aria-checked="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
+                    <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+                <span>Rangli karaoke caption</span>
+            </button>
+
+            <div id="karaoke-panel" class="translate-panel" hidden>
+                <p class="kinetic-style-note">Avval "Subtitr yaratish"ni bosgan bo'lishingiz kerak —
+                    karaoke video shu so'z vaqtlaridan foydalanadi. Rangli so'z-baso'z animatsiyali
+                    caption videoni burab (kuydirib) chiqaradi va loyihaga import qiladi.</p>
+                <div id="karaoke-style-grid" class="kinetic-grid"></div>
+                <button type="button" id="karaoke-generate-btn" class="btn">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span>Karaoke video yasash</span>
+                </button>
+            </div>
         </div>
 
         <button id="generate-btn" class="btn primary">
