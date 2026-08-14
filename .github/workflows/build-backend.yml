@@ -23,6 +23,14 @@ name: Build backend installers
 # srt_bot/plugin_release.py's GET /plugin/version and /plugin/download), which already-installed
 # users hit without ever visiting the website. It only needs building once (it's not
 # OS-specific), hence living in the Windows job rather than being duplicated in the Mac job.
+#
+# build-webserver-jar is unrelated to the desktop installers above: it ships the SAME Spring
+# Boot app as a plain runnable jar (no jpackage, no bundled ffmpeg/JRE) to run headless on the
+# AWS box itself, under "-Dspring.profiles.active=webserver" (see application-webserver.properties),
+# powering the browser-based upload tool at website/subtitr.html. Needs a one-time, by-hand setup
+# on the server this workflow does NOT do: `apt install openjdk-21-jre-headless ffmpeg`, the
+# systemd unit at /etc/systemd/system/ravon-web-caption.service, and passwordless sudo for
+# `appuser` to restart just that unit (see PROGRESS.md for the exact systemd/nginx config).
 on:
   workflow_dispatch: {}
   push:
@@ -213,3 +221,33 @@ jobs:
           scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
             RavonCaptions-mac.zip \
             appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/srt_bot/plugin-release/installer/RavonCaptions-mac.zip
+
+  build-webserver-jar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build jar
+        run: |
+          chmod +x mvnw
+          ./mvnw -q -DskipTests package
+
+      - name: Upload jar and restart service
+        env:
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/aws_key.pem
+          chmod 600 ~/.ssh/aws_key.pem
+          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
+            "mkdir -p /home/appuser/uzbek-ai-captions/web-caption-server"
+          scp -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no \
+            target/Plugin-0.0.1-SNAPSHOT.jar \
+            appuser@aitilmoch.duckdns.org:/home/appuser/uzbek-ai-captions/web-caption-server/Plugin-0.0.1-SNAPSHOT.jar
+          ssh -i ~/.ssh/aws_key.pem -o StrictHostKeyChecking=no appuser@aitilmoch.duckdns.org \
+            "sudo systemctl restart ravon-web-caption.service"

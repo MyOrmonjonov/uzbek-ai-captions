@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ravon Captions — Videoga onlayn subtitr qo'shish</title>
+<meta name="description" content="Videongizni yuklang, sun'iy intellekt subtitr yozadi, matnni tahrirlab, rangli animatsion (karaoke) stil bilan video ichiga kuydiring — brauzerda, o'rnatmasdan.">
+<link rel="icon" href="assets/logo.png">
+<style>
+  :root{
+    --bg:#0d0b1a;
+    --bg-elev:#161328;
+    --bg-elev-2:#1c1836;
+    --border:#2c2650;
+    --text:#eeecfb;
+    --text-dim:#a29cc4;
+    --accent:#7c6fef;
+    --accent-dim:#5b4fd1;
+    --accent-soft:rgba(124,111,239,0.16);
+    --glass:linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+    --glass-border:rgba(255,255,255,0.09);
+    --glass-hover-border:rgba(255,255,255,0.16);
+    --radius:14px;
+    --maxw:1280px;
+    --ease:cubic-bezier(.16,1,.3,1);
+    --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
+  img,svg{display:block;max-width:100%;}
+
+  header{
+    position:sticky;top:0;z-index:50;
+    background:rgba(13,11,26,0.72);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
+    border-bottom:1px solid var(--glass-border);
+  }
+  nav.wrap{display:flex;align-items:center;justify-content:space-between;height:68px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;text-decoration:none;}
+  .brand .logo-img{width:34px;height:34px;border-radius:9px;flex-shrink:0;}
+  .navlinks{display:flex;align-items:center;gap:20px;}
+  .navlinks a{font-size:14.5px;color:var(--text-dim);text-decoration:none;}
+  .navlinks a:hover{color:var(--text);}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:11px 20px;border-radius:10px;font-weight:600;font-size:14.5px;
+    text-decoration:none;border:1px solid transparent;cursor:pointer;
+    transition:transform .25s var(--ease), box-shadow .25s var(--ease), background .15s, border-color .15s;
+    white-space:nowrap;font-family:inherit;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-accent{background:var(--accent);color:#140f33;box-shadow:0 8px 24px -8px rgba(124,111,239,0.7);}
+  .btn-accent:hover:not(:disabled){background:#9184f3;transform:translateY(-2px);}
+  .btn-ghost{background:rgba(255,255,255,0.03);color:var(--text);border-color:var(--glass-border);}
+  .btn-ghost:hover{border-color:var(--accent-dim);background:rgba(124,111,239,0.08);}
+  .btn-sm{padding:8px 14px;font-size:13.5px;}
+  .btn-block{width:100%;}
+  .icon-btn{
+    display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+    border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.03);
+    color:var(--text-dim);cursor:pointer;
+  }
+  .icon-btn:hover{color:var(--text);border-color:var(--glass-hover-border);}
+
+  .tool-hero{padding:48px 0 28px;text-align:center;}
+  .kicker{color:var(--accent);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+  h1{font-size:clamp(26px,3.6vw,38px);line-height:1.15;font-weight:800;margin:0 0 12px;letter-spacing:-0.02em;}
+  .tool-hero p{max-width:560px;margin:0 auto;color:var(--text-dim);font-size:16px;}
+
+  .tool-card{
+    margin:0 auto 80px;
+    background:var(--glass);border:1px solid var(--glass-border);border-radius:20px;
+    padding:32px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  }
+  .tool-card.narrow{max-width:760px;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  /* ---- upload ---- */
+  .dropzone{
+    border:2px dashed var(--glass-border);border-radius:16px;padding:48px 24px;text-align:center;
+    cursor:pointer;transition:border-color .2s,background .2s;
+  }
+  .dropzone:hover,.dropzone.drag{border-color:var(--accent);background:rgba(124,111,239,0.06);}
+  .dropzone svg{margin:0 auto 16px;color:var(--accent);}
+  .dropzone strong{display:block;font-size:16px;margin-bottom:6px;}
+  .dropzone span{color:var(--text-dim);font-size:13.5px;}
+  .dropzone input{display:none;}
+  .quota-note{text-align:center;color:var(--text-dim);font-size:12.5px;margin-top:16px;}
+
+  /* ---- progress (shared: uploading / transcribing / rendering) ---- */
+  .progress-wrap{text-align:center;padding:20px 0;}
+  .progress-bar{height:8px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;margin:20px 0 12px;}
+  .progress-bar-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .3s var(--ease);width:0%;}
+  .progress-label{font-weight:700;font-size:15px;margin-bottom:4px;}
+  .progress-sub{color:var(--text-dim);font-size:13px;}
+
+  /* ---- result ---- */
+  .result-video{width:100%;border-radius:14px;margin-bottom:20px;background:#000;max-height:480px;}
+  .result-actions{display:flex;gap:12px;flex-wrap:wrap;}
+  .result-actions .btn{flex:1;}
+
+  /* ---- paywall ---- */
+  .paywall{text-align:center;}
+  .paywall svg{margin:0 auto 16px;color:var(--accent);}
+  .paywall h3{margin:0 0 8px;font-size:18px;}
+  .paywall p{color:var(--text-dim);font-size:14px;margin:0 0 20px;}
+  .device-code{
+    display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:20px;font-weight:700;
+    letter-spacing:.04em;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);
+    border-radius:10px;padding:10px 18px;margin-bottom:20px;
+  }
+  .paywall-actions{display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto;}
+  .activate-row{display:flex;gap:8px;margin-top:6px;}
+  .activate-row input{
+    flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:8px;
+    padding:10px 12px;color:var(--text);font-family:inherit;font-size:13.5px;
+  }
+  .activate-note{font-size:12px;color:var(--text-dim);margin-top:10px;}
+
+  .error-box{
+    background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.35);color:var(--danger);
+    border-radius:10px;padding:14px 16px;font-size:13.5px;text-align:center;margin-top:16px;
+  }
+
+  /* ---- editor screen ---- */
+  .editor-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+  .editor-head h3{font-size:16px;margin:0;}
+  .editor-head button{background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;}
+  .editor-grid{display:grid;grid-template-columns:1fr;gap:20px;}
+  @media (min-width:960px){.editor-grid{grid-template-columns:1.1fr 1fr 0.8fr;}}
+
+  .editor-video-col{display:flex;flex-direction:column;gap:12px;}
+  .editor-video{width:100%;border-radius:12px;background:#000;max-height:340px;}
+
+  .editor-panel{
+    background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:12px;
+    padding:16px;
+  }
+  .editor-panel h4{margin:0 0 10px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;}
+
+  .transcript-box{max-height:340px;overflow-y:auto;font-size:15px;line-height:1.9;}
+  .word-chip{
+    display:inline-block;padding:1px 3px;border-radius:4px;cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  .word-chip:hover{background:rgba(124,111,239,0.14);}
+  .word-chip.active{background:var(--accent);color:#140f33;}
+  .word-chip[contenteditable="true"]{background:rgba(255,255,255,0.08);outline:1px solid var(--accent-dim);}
+
+  .style-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-height:340px;overflow-y:auto;padding-right:4px;}
+  .style-card{
+    background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:10px;
+    padding:12px 8px;text-align:center;cursor:pointer;transition:transform .2s var(--ease),border-color .2s;
+  }
+  .style-card:hover{transform:translateY(-2px);border-color:var(--glass-hover-border);}
+  .style-card.picked{border-color:var(--accent);background:rgba(124,111,239,0.1);}
+  .style-preview{font-size:13px;line-height:1.3;margin-bottom:6px;min-height:32px;display:flex;align-items:center;justify-content:center;}
+  .style-name{font-size:11px;color:var(--text-dim);}
+
+  /* ---- waveform ---- */
+  .waveform-panel{margin-top:20px;}
+  .waveform-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .waveform-head h4{margin:0;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;}
+  .waveform-zoom{display:flex;gap:6px;}
+  .waveform-scroll{overflow-x:auto;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);}
+  .waveform-stage{position:relative;height:88px;}
+  .waveform-stage canvas{position:absolute;inset:0;display:block;}
+  .waveform-playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:3;pointer-events:none;}
+  .word-block{
+    position:absolute;top:6px;bottom:6px;background:rgba(124,111,239,0.28);
+    border:1px solid var(--accent-dim);border-radius:4px;z-index:2;
+  }
+  .word-block .handle{
+    position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;
+  }
+  .word-block .handle.left{left:-4px;}
+  .word-block .handle.right{right:-4px;}
+  .word-block .handle:hover{background:rgba(255,255,255,0.25);}
+
+  footer{border-top:1px solid var(--border);padding:32px 0;text-align:center;color:var(--text-dim);font-size:13px;}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <a href="index.html" class="brand">
+      <img src="assets/logo.png" alt="Ravon Captions" class="logo-img">
+      Ravon Captions
+    </a>
+    <div class="navlinks">
+      <a href="index.html">Bosh sahifa</a>
+      <a href="index.html#narxlar">Narxlar</a>
+      <a href="https://t.me/ravoncaptions_bot" class="btn btn-accent btn-sm" target="_blank" rel="noopener">Sotib olish</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <section class="tool-hero wrap">
+    <div class="kicker">Onlayn vosita</div>
+    <h1>Videongizga bir zumda <br>subtitr qo'shing</h1>
+    <p>Videoni yuklang — sun'iy intellekt matnni yozadi, siz uni tahrirlaysiz va uslub tanlaysiz, tayyor video kuydirilgan animatsion subtitr bilan qaytadi.</p>
+  </section>
+
+  <div class="wrap">
+
+    <!-- 1. Upload -->
+    <div class="tool-card narrow panel active" id="panel-upload">
+      <div class="dropzone" id="dropzone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+        <strong>Videoni shu yerga tashlang</strong>
+        <span>yoki bosib tanlang · MP4, MOV · 500MB gacha</span>
+        <input type="file" id="fileInput" accept="video/*">
+      </div>
+      <p class="quota-note" id="quotaNote"></p>
+      <div class="error-box" id="uploadError" style="display:none;"></div>
+    </div>
+
+    <!-- 2. Uploading progress -->
+    <div class="tool-card narrow panel" id="panel-uploading">
+      <div class="progress-wrap">
+        <div class="progress-label">Video yuklanmoqda...</div>
+        <div class="progress-bar"><div class="progress-bar-fill" id="uploadBarFill"></div></div>
+        <div class="progress-sub" id="uploadPercentLabel">0%</div>
+      </div>
+    </div>
+
+    <!-- 3. Transcribing progress -->
+    <div class="tool-card narrow panel" id="panel-transcribing">
+      <div class="progress-wrap">
+        <div class="progress-label">Matnga aylantirilmoqda...</div>
+        <div class="progress-bar"><div class="progress-bar-fill" id="transcribeBarFill" style="width:60%"></div></div>
+        <div class="progress-sub">Bu bir necha soniya davom etadi.</div>
+      </div>
+    </div>
+
+    <!-- 4. Editor: video + transcript + style, then waveform below -->
+    <div class="tool-card panel" id="panel-editor">
+      <div class="editor-head">
+        <h3>Matnni ko'rib chiqing va uslub tanlang</h3>
+        <button type="button" id="resetFromEditor">Boshqa video</button>
+      </div>
+      <div class="editor-grid">
+        <div class="editor-video-col">
+          <video class="editor-video" id="editorVideo" controls></video>
+        </div>
+        <div class="editor-panel">
+          <h4>Matn (so'zga bosing — o'sha joyga o'tadi; ikki bosing — tahrirlang)</h4>
+          <div class="transcript-box" id="transcriptBox"></div>
+        </div>
+        <div class="editor-panel">
+          <h4>Uslub</h4>
+          <div class="style-grid" id="styleGrid"></div>
+        </div>
+      </div>
+      <div class="waveform-panel">
+        <div class="waveform-head">
+          <h4>Lenta (so'z chetini sudrab vaqtini to'g'irlang)</h4>
+          <div class="waveform-zoom">
+            <button type="button" class="icon-btn" id="zoomOutBtn">−</button>
+            <button type="button" class="icon-btn" id="zoomInBtn">+</button>
+          </div>
+        </div>
+        <div class="waveform-scroll" id="waveformScroll">
+          <div class="waveform-stage" id="waveformStage">
+            <canvas id="waveformCanvas" height="88"></canvas>
+            <div class="waveform-playhead" id="waveformPlayhead" style="left:0"></div>
+          </div>
+        </div>
+      </div>
+      <div class="error-box" id="editorError" style="display:none;"></div>
+    </div>
+
+    <!-- 5. Render progress -->
+    <div class="tool-card narrow panel" id="panel-progress">
+      <div class="progress-wrap">
+        <div class="progress-label" id="progressLabel">Navbatda...</div>
+        <div class="progress-bar"><div class="progress-bar-fill" id="jobBarFill"></div></div>
+        <div class="progress-sub">Bu bir necha daqiqa davom etishi mumkin, sahifani yopmang.</div>
+      </div>
+    </div>
+
+    <!-- 6. Result -->
+    <div class="tool-card narrow panel" id="panel-result">
+      <video class="result-video" id="resultVideo" controls></video>
+      <div class="result-actions">
+        <a class="btn btn-accent" id="downloadBtn" download>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+          Yuklab olish
+        </a>
+        <button class="btn btn-ghost" id="resetFromResult" type="button">Yana bitta video</button>
+      </div>
+    </div>
+
+    <!-- 7. Paywall -->
+    <div class="tool-card narrow panel" id="panel-paywall">
+      <div class="paywall">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+        <h3>Kunlik bepul limit tugadi</h3>
+        <p>Faollashtirish uchun quyidagi kodni botga yuboring:</p>
+        <div class="device-code" id="deviceCodeBox">----</div>
+        <div class="paywall-actions">
+          <a class="btn btn-accent btn-block" id="botLink" target="_blank" rel="noopener">Botga o'tish va to'lash</a>
+          <div class="activate-row">
+            <input type="text" id="tokenInput" placeholder="Faollashtirish tokeni">
+            <button class="btn btn-ghost" id="activateBtn" type="button">Faollashtirish</button>
+          </div>
+          <div class="activate-note" id="activateNote"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Ravon Captions · <a href="https://t.me/ravoncaptions_bot" target="_blank" rel="noopener">Telegram</a></div>
+</footer>
+
+<script>
+(function () {
+  var WEB_API_BASE = 'https://aitilmoch.duckdns.org/videocaption-api';
+  var MIN_WORD_DURATION = 0.05;
+
+  var panels = {};
+  ['upload','uploading','transcribing','editor','progress','result','paywall'].forEach(function (name) {
+    panels[name] = document.getElementById('panel-' + name);
+  });
+  function showPanel(name) {
+    Object.keys(panels).forEach(function (key) {
+      panels[key].classList.toggle('active', key === name);
+    });
+  }
+
+  var state = { uploadId: null, file: null, objectUrl: null, words: [], styleKey: null, jobId: null,
+                audioBuffer: null, pxPerSecond: 60 };
+
+  function authHeaders() {
+    var deviceCode = localStorage.getItem('ravon_device_code');
+    var token = localStorage.getItem('ravon_license_token');
+    var headers = {};
+    if (deviceCode && token) {
+      headers['X-Device-Code'] = deviceCode;
+      headers['X-License-Token'] = token;
+    }
+    return headers;
+  }
+
+  function resetToUpload() {
+    if (state.objectUrl) {
+      URL.revokeObjectURL(state.objectUrl);
+    }
+    state = { uploadId: null, file: null, objectUrl: null, words: [], styleKey: null, jobId: null,
+              audioBuffer: null, pxPerSecond: 60 };
+    document.getElementById('fileInput').value = '';
+    document.getElementById('uploadError').style.display = 'none';
+    document.getElementById('editorError').style.display = 'none';
+    showPanel('upload');
+  }
+
+  // ---- 1. Upload ----
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('fileInput');
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('drag'); });
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    if (e.dataTransfer.files.length) {
+      uploadFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) {
+      uploadFile(fileInput.files[0]);
+    }
+  });
+
+  function uploadFile(file) {
+    document.getElementById('uploadError').style.display = 'none';
+    showPanel('uploading');
+
+    state.file = file;
+    state.objectUrl = URL.createObjectURL(file);
+    document.getElementById('editorVideo').src = state.objectUrl;
+
+    var form = new FormData();
+    form.append('video', file);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', WEB_API_BASE + '/web/upload');
+    var headers = authHeaders();
+    Object.keys(headers).forEach(function (k) { xhr.setRequestHeader(k, headers[k]); });
+
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) {
+        var pct = Math.round((e.loaded / e.total) * 100);
+        document.getElementById('uploadBarFill').style.width = pct + '%';
+        document.getElementById('uploadPercentLabel').textContent = pct + '%';
+      }
+    };
+
+    xhr.onload = function () {
+      var body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status === 200 && body.uploadId) {
+        state.uploadId = body.uploadId;
+        startTranscribe();
+        decodeAudioForWaveform(file);
+      } else if (xhr.status === 402) {
+        showPaywall(body);
+      } else {
+        showUploadError(body.error || 'Video yuklashda xatolik yuz berdi.');
+      }
+    };
+    xhr.onerror = function () {
+      showUploadError('Serverga ulanib bo\'lmadi.');
+    };
+    xhr.send(form);
+  }
+
+  function showUploadError(message) {
+    showPanel('upload');
+    var box = document.getElementById('uploadError');
+    box.textContent = message;
+    box.style.display = 'block';
+  }
+
+  // ---- 2. Transcription ----
+  function startTranscribe() {
+    showPanel('transcribing');
+    fetch(WEB_API_BASE + '/web/transcribe', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({ uploadId: state.uploadId })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status === 200 && res.body.jobId) {
+          pollTranscribeJob(res.body.jobId);
+        } else {
+          showUploadError(res.body.error || 'Transkripsiya boshlanmadi.');
+        }
+      })
+      .catch(function () { showUploadError('Serverga ulanib bo\'lmadi.'); });
+  }
+
+  function pollTranscribeJob(jobId) {
+    fetch(WEB_API_BASE + '/web/transcribe/status/' + jobId)
+      .then(function (r) { return r.json(); })
+      .then(function (status) {
+        if (status.status === 'done') {
+          state.words = (status.words || []).map(function (w) {
+            return { text: w.text, start: w.start, end: w.end };
+          });
+          showEditor();
+        } else if (status.status === 'error') {
+          showUploadError(status.error || 'Matn aniqlanmadi.');
+        } else {
+          setTimeout(function () { pollTranscribeJob(jobId); }, 1200);
+        }
+      })
+      .catch(function () { setTimeout(function () { pollTranscribeJob(jobId); }, 2000); });
+  }
+
+  // ---- 3. Editor: transcript + waveform + styles ----
+  function showEditor() {
+    showPanel('editor');
+    renderTranscript();
+    renderStylesIntoEditor();
+    if (state.audioBuffer) {
+      renderWaveform();
+    }
+    var video = document.getElementById('editorVideo');
+    video.ontimeupdate = function () {
+      updateActiveWordChip(video.currentTime);
+      updatePlayhead(video.currentTime);
+    };
+  }
+
+  function renderTranscript() {
+    var box = document.getElementById('transcriptBox');
+    box.innerHTML = '';
+    state.words.forEach(function (word, idx) {
+      var chip = document.createElement('span');
+      chip.className = 'word-chip';
+      chip.textContent = word.text;
+      chip.dataset.index = idx;
+      chip.addEventListener('click', function () {
+        if (chip.getAttribute('contenteditable') === 'true') return;
+        var video = document.getElementById('editorVideo');
+        video.currentTime = word.start;
+        video.play();
+      });
+      chip.addEventListener('dblclick', function () {
+        chip.setAttribute('contenteditable', 'true');
+        chip.focus();
+        document.execCommand('selectAll', false, null);
+      });
+      chip.addEventListener('blur', function () { commitChipEdit(chip, idx); });
+      chip.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); chip.blur(); }
+      });
+      box.appendChild(chip);
+      box.appendChild(document.createTextNode(' '));
+    });
+  }
+
+  function commitChipEdit(chip, idx) {
+    if (chip.getAttribute('contenteditable') !== 'true') return;
+    chip.removeAttribute('contenteditable');
+    var text = chip.textContent.trim();
+    if (text) {
+      state.words[idx].text = text;
+      chip.textContent = text;
+    } else {
+      chip.textContent = state.words[idx].text;
+    }
+  }
+
+  function updateActiveWordChip(currentTime) {
+    var box = document.getElementById('transcriptBox');
+    var chips = box.children;
+    for (var i = 0; i < chips.length; i++) {
+      var chip = chips[i];
+      if (chip.dataset === undefined || chip.dataset.index === undefined) continue;
+      var w = state.words[chip.dataset.index];
+      var active = w && currentTime >= w.start && currentTime < w.end;
+      chip.classList.toggle('active', !!active);
+    }
+  }
+
+  // ---- 4. Style gallery (inside editor) ----
+  var stylesCache = null;
+  function renderStylesIntoEditor() {
+    if (stylesCache) { renderStyles(stylesCache); return; }
+    fetch(WEB_API_BASE + '/karaoke-styles')
+      .then(function (r) { return r.json(); })
+      .then(function (styles) { stylesCache = styles; renderStyles(styles); })
+      .catch(function () {
+        document.getElementById('styleGrid').innerHTML = '<div class="error-box">Uslublarni yuklab bo\'lmadi.</div>';
+      });
+  }
+
+  function renderStyles(styles) {
+    var grid = document.getElementById('styleGrid');
+    grid.innerHTML = '';
+    styles.forEach(function (s) {
+      var card = document.createElement('div');
+      card.className = 'style-card';
+      card.innerHTML =
+        '<div class="style-preview" style="font-weight:' + (s.bold ? '800' : '600') +
+        ';font-family:' + s.fontName + ',sans-serif;color:' + s.primaryColorHex + '">' +
+        'Salom <span style="color:' + s.highlightColorHex + '">dunyo</span></div>' +
+        '<div class="style-name">' + s.displayName + '</div>';
+      card.addEventListener('click', function () {
+        Array.prototype.forEach.call(grid.children, function (c) { c.classList.remove('picked'); });
+        card.classList.add('picked');
+        pickStyle(s.key);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  function pickStyle(styleKey) {
+    state.styleKey = styleKey;
+    document.getElementById('editorError').style.display = 'none';
+    showPanel('progress');
+    document.getElementById('progressLabel').textContent = 'Navbatda...';
+    document.getElementById('jobBarFill').style.width = '0%';
+
+    fetch(WEB_API_BASE + '/web/caption', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({ uploadId: state.uploadId, styleKey: styleKey, words: state.words })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status === 200 && res.body.jobId) {
+          state.jobId = res.body.jobId;
+          pollJob();
+        } else {
+          showPanel('editor');
+          var box = document.getElementById('editorError');
+          box.textContent = res.body.error || 'Ish boshlanmadi.';
+          box.style.display = 'block';
+        }
+      })
+      .catch(function () {
+        showPanel('editor');
+        var box = document.getElementById('editorError');
+        box.textContent = 'Serverga ulanib bo\'lmadi.';
+        box.style.display = 'block';
+      });
+  }
+
+  // ---- 5. Render job progress polling ----
+  var stageLabels = {
+    queued: 'Navbatda...',
+    encoding: 'Animatsiya kuydirilmoqda (bir necha daqiqa)...',
+    done: 'Tayyor!'
+  };
+
+  function pollJob() {
+    fetch(WEB_API_BASE + '/web/caption/status/' + state.jobId)
+      .then(function (r) { return r.json(); })
+      .then(function (status) {
+        document.getElementById('progressLabel').textContent = stageLabels[status.stage] || 'Ishlanmoqda...';
+        document.getElementById('jobBarFill').style.width = (status.progressPercent || 0) + '%';
+
+        if (status.status === 'done') {
+          showResult(status.downloadUrl);
+        } else if (status.status === 'error') {
+          showPanel('editor');
+          var box = document.getElementById('editorError');
+          box.textContent = status.error || 'Xatolik yuz berdi.';
+          box.style.display = 'block';
+        } else {
+          setTimeout(pollJob, 1200);
+        }
+      })
+      .catch(function () {
+        setTimeout(pollJob, 2000);
+      });
+  }
+
+  // ---- 6. Result ----
+  function showResult(downloadUrlSegment) {
+    var fullUrl = WEB_API_BASE + '/' + downloadUrlSegment;
+    document.getElementById('resultVideo').src = fullUrl;
+    document.getElementById('downloadBtn').href = fullUrl;
+    showPanel('result');
+  }
+
+  // ---- 7. Paywall ----
+  function showPaywall(body) {
+    document.getElementById('deviceCodeBox').textContent = body.deviceCode || '----';
+    document.getElementById('botLink').href = body.botUrl || 'https://t.me/ravoncaptions_bot';
+    showPanel('paywall');
+  }
+
+  document.getElementById('activateBtn').addEventListener('click', function () {
+    var deviceCode = document.getElementById('deviceCodeBox').textContent;
+    var token = document.getElementById('tokenInput').value.trim();
+    var note = document.getElementById('activateNote');
+    if (!token) {
+      note.textContent = 'Tokenni kiriting.';
+      return;
+    }
+    localStorage.setItem('ravon_device_code', deviceCode);
+    localStorage.setItem('ravon_license_token', token);
+    note.textContent = 'Saqlandi — endi qaytadan video yuklang.';
+    setTimeout(resetToUpload, 1200);
+  });
+
+  document.getElementById('resetFromEditor').addEventListener('click', resetToUpload);
+  document.getElementById('resetFromResult').addEventListener('click', resetToUpload);
+
+  // ==================================================================
+  // Waveform: fully client-side (Web Audio API decode of the same File
+  // the user picked -- no server round trip). Word segments are drawn as
+  // absolutely-positioned divs on top of the canvas so drag handles are
+  // plain DOM elements (much simpler than hit-testing inside canvas).
+  // ==================================================================
+
+  function decodeAudioForWaveform(file) {
+    file.arrayBuffer().then(function (buf) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      var ctx = new Ctx();
+      return ctx.decodeAudioData(buf);
+    }).then(function (audioBuffer) {
+      state.audioBuffer = audioBuffer;
+      if (panels.editor.classList.contains('active')) {
+        renderWaveform();
+      }
+    }).catch(function () {
+      // Waveform is a nice-to-have on top of the transcript editor; if decoding fails
+      // (unsupported container/codec in this browser) the editor still works without it.
+    });
+  }
+
+  function computePeaks(audioBuffer, numBuckets) {
+    var channel = audioBuffer.getChannelData(0);
+    var samplesPerBucket = Math.max(1, Math.floor(channel.length / numBuckets));
+    var peaks = new Float32Array(numBuckets);
+    for (var b = 0; b < numBuckets; b++) {
+      var start = b * samplesPerBucket;
+      var end = Math.min(channel.length, start + samplesPerBucket);
+      var max = 0;
+      for (var i = start; i < end; i++) {
+        var v = Math.abs(channel[i]);
+        if (v > max) max = v;
+      }
+      peaks[b] = max;
+    }
+    return peaks;
+  }
+
+  function renderWaveform() {
+    var duration = state.audioBuffer.duration;
+    var width = Math.max(300, Math.ceil(duration * state.pxPerSecond));
+    var stage = document.getElementById('waveformStage');
+    var canvas = document.getElementById('waveformCanvas');
+    stage.style.width = width + 'px';
+    canvas.width = width;
+    canvas.height = 88;
+
+    var peaks = computePeaks(state.audioBuffer, Math.min(2000, Math.floor(width / 2)));
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, width, 88);
+    ctx.fillStyle = 'rgba(124,111,239,0.55)';
+    var mid = 44;
+    var barWidth = width / peaks.length;
+    for (var i = 0; i < peaks.length; i++) {
+      var h = Math.max(1, peaks[i] * 40);
+      ctx.fillRect(i * barWidth, mid - h, Math.max(1, barWidth - 1), h * 2);
+    }
+
+    renderWordBlocks(width, duration);
+  }
+
+  function renderWordBlocks(width, duration) {
+    var stage = document.getElementById('waveformStage');
+    var existing = stage.querySelectorAll('.word-block');
+    existing.forEach(function (el) { el.remove(); });
+
+    state.words.forEach(function (word, idx) {
+      var block = document.createElement('div');
+      block.className = 'word-block';
+      positionBlock(block, word, width, duration);
+
+      var left = document.createElement('span');
+      left.className = 'handle left';
+      var right = document.createElement('span');
+      right.className = 'handle right';
+      block.appendChild(left);
+      block.appendChild(right);
+      stage.appendChild(block);
+
+      attachHandleDrag(left, idx, 'start', width, duration, block);
+      attachHandleDrag(right, idx, 'end', width, duration, block);
+    });
+  }
+
+  function positionBlock(block, word, width, duration) {
+    var left = (word.start / duration) * width;
+    var right = (word.end / duration) * width;
+    block.style.left = left + 'px';
+    block.style.width = Math.max(2, right - left) + 'px';
+  }
+
+  function attachHandleDrag(handle, idx, edge, width, duration, block) {
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      var scrollEl = document.getElementById('waveformScroll');
+
+      function onMove(ev) {
+        var rect = document.getElementById('waveformStage').getBoundingClientRect();
+        var x = ev.clientX - rect.left;
+        var time = Math.max(0, Math.min(duration, (x / width) * duration));
+        var word = state.words[idx];
+        var prev = state.words[idx - 1];
+        var next = state.words[idx + 1];
+        if (edge === 'start') {
+          var minStart = prev ? prev.end : 0;
+          word.start = Math.max(minStart, Math.min(time, word.end - MIN_WORD_DURATION));
+        } else {
+          var maxEnd = next ? next.start : duration;
+          word.end = Math.min(maxEnd, Math.max(time, word.start + MIN_WORD_DURATION));
+        }
+        positionBlock(block, word, width, duration);
+      }
+      function onUp(ev) {
+        handle.releasePointerCapture(e.pointerId);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      }
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  }
+
+  function updatePlayhead(currentTime) {
+    if (!state.audioBuffer) return;
+    var width = document.getElementById('waveformCanvas').width;
+    var duration = state.audioBuffer.duration;
+    var x = (currentTime / duration) * width;
+    document.getElementById('waveformPlayhead').style.left = x + 'px';
+  }
+
+  document.getElementById('waveformStage').addEventListener('click', function (e) {
+    if (e.target.classList.contains('handle')) return;
+    if (!state.audioBuffer) return;
+    var rect = this.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var duration = state.audioBuffer.duration;
+    var width = document.getElementById('waveformCanvas').width;
+    var time = (x / width) * duration;
+    var video = document.getElementById('editorVideo');
+    video.currentTime = time;
+  });
+
+  document.getElementById('zoomInBtn').addEventListener('click', function () {
+    state.pxPerSecond = Math.min(400, state.pxPerSecond * 1.4);
+    if (state.audioBuffer) renderWaveform();
+  });
+  document.getElementById('zoomOutBtn').addEventListener('click', function () {
+    state.pxPerSecond = Math.max(15, state.pxPerSecond / 1.4);
+    if (state.audioBuffer) renderWaveform();
+  });
+})();
+</script>
+
+</body>
+</html>

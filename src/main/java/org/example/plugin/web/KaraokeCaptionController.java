@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.example.plugin.config.KaraokeStylePresets;
+import org.example.plugin.service.AssColorUtil;
 import org.example.plugin.service.KaraokeCaptionService;
 import org.example.plugin.service.LicenseService;
 import org.example.plugin.web.dto.ErrorResponse;
@@ -38,7 +39,9 @@ public class KaraokeCaptionController {
     @GetMapping("/api/karaoke-styles")
     public List<KaraokeStyleDto> styles() {
         return KaraokeStylePresets.all().stream()
-                .map(s -> new KaraokeStyleDto(s.key(), s.displayName()))
+                .map(s -> new KaraokeStyleDto(s.key(), s.displayName(), s.fontName(),
+                        AssColorUtil.toCssHex(s.baseColorAss()), AssColorUtil.toCssHex(s.highlightColorAss()),
+                        s.bold()))
                 .toList();
     }
 

@@ -1641,3 +1641,99 @@ Bu fayl har bir sessiyada nima qilinganini va oxirgi holatni yozib borish uchun.
   `node --check` xatosiz o'tdi. Versiya **1.4.14**ga oshirildi, `install.bat` bilan
   lokal qayta o'rnatildi.
 - **Hali sinovdan o'tkazilmagan va push qilinmagan** (sabab o'zgarmadi).
+
+## 2026-08-13 — Majburiy ro'yxatdan o'tish, ffmpeg/clipboard fixlar, backend auto-update, CI deploy manzili o'zgardi
+
+Bu va keyingi bo'lim git commit tarixidan tiklandi — sessiya davomida PROGRESS.md
+yangilanmagan edi (oxirgi yozuv 2026-08-12 "davomi 3" edi), lekin `git log` orqali
+tekshirilganda 11 ta commit borligi aniqlandi (2026-08-13 11:11 dan 2026-08-14 01:21 gacha).
+
+- **Majburiy ro'yxatdan o'tish** (`a2889b0`): bot endi ism+telefon so'ramasdan hech narsaga
+  javob bermaydi (`registration.py`, yangi fayl). Har foydalanuvchi uchun profil saqlanadi,
+  yangi **"Statistikam"** ko'rinishi qo'shildi. Sayt/panel'dan keladigan tarif deep-link
+  payload'lari (`?start=1m/3m/6m/12m`) ro'yxatdan o'tish oralig'idan ham saqlanib qoladi.
+- **B-roll manbalari kengaytirildi**: Pixabay fallback (`broll.py`) va portret (vertikal)
+  orientatsiyali Pexels video natijalari qo'shildi.
+- **Bundled ffmpeg topilmaslik bug'i tuzatildi** (`c954a7a`, `BundledFfmpegResolver.java`):
+  jpackage ffmpeg'ni `app-content` papkasi ostiga joylashtirar ekan, bu hisobga olinmagan
+  edi — Premiere odatda ffmpeg'ni chetlab o'tadi (mono/16kHz fast-path), shuning uchun faqat
+  After Effects'da "ffmpeg not found" chiqardi.
+- **"Botga o'tish" tugmasi tuzatildi**: Telegram start-payload deep-link allaqachon bot bilan
+  chatingiz bo'lsa device code'ni yo'qotib qo'yar edi — endi kod nusxalanadi va oddiy chat
+  ochiladi, botda kodni joylash haqida ko'rsatma chiqadi.
+- **CI deploy manzili o'zgardi**: eski `ubuntu@` AWS box o'rniga endi `appuser@`
+  (server bir xil, `aitilmoch.duckdns.org`; yo'l — `/home/appuser/uzbek-ai-captions/`).
+  Ko'rsatma faylida ("retired ubuntu@ AWS box") aniq shunday deyilgan — bundan buyon deploy
+  bilan bog'liq ishlarda `appuser` manzilini ishlatish kerak.
+- **Panel clipboard nusxalash tuzatildi** (`cc390d1`): CEP'ning ichki Chromium'ida
+  `navigator.clipboard` `file://` xavfsiz kontekst bo'lmagani sababli sukut saqlab
+  ishlamas edi — endi Node integratsiyasi orqali OS clipboard vositasi (`clip`/`pbcopy`)
+  chaqiriladi.
+- **Mac backend rebrend qilindi**: `UzbekAiCaptionsBackend` → `RavonCaptionsBackend`
+  (jpackage nomi, o'rnatish skripti, LaunchAgent plist, pkill patterni) — Windows tomonida
+  bu allaqachon `RavonCaptions` nomi bilan edi.
+- **Backend o'z-o'zini yangilaydigan qilindi** (`c981816`): Java backend endi versiyasini
+  o'zi bilan olib yuradi (CI'da `backend-version.txt`, `GET /api/version` orqali ochiladi),
+  `srt_bot` esa eng oxirgi versiyani `/backend/version`da beradi. Panel ishga tushganda
+  ikkalasini ham tekshiradi — agar backend eski bo'lsa, yangi build'ni yuklab oladi, eski
+  jarayonni o'chiradi, o'rnatish papkasini almashtiradi va qayta ishga tushiradi. Bu
+  keyingi bo'limdagi ffmpeg-path fix ochib bergan bo'shliqni yopadi: shu kungacha faqat
+  panel o'zini yangilar edi, backend esa yo'q — ya'ni shunga o'xshash tuzatish faqat
+  qo'lda qayta o'rnatgan foydalanuvchilarga yetib borardi.
+
+## 2026-08-13 (kechqurun) — 2026-08-14 — Karaoke-uslub animatsion subtitrlar (v1, Premiere)
+
+- **Karaoke-uslub kuydirilgan animatsion subtitrlar** qo'shildi (`c4e00e5`) — yangi panel
+  tugmasi faol sequence'ni so'z-so'zma-so'z rangli animatsiya bilan (video ichiga
+  "kuydirilgan" holda) render qiladi. Boshlang'ich 7 ta preset (Apple, Karaoke Klassik,
+  TikTok Bold, MrBeast, Neon, Sunset, Royal) — har biri shunchaki font/rang/animatsiya
+  konfiguratsiyasi (`KaraokeStylePresets.java`), shuning uchun keyinchalik yangi preset
+  qo'shish arzon. "Subtitr yaratish" allaqachon hisoblagan so'z vaqtlaridan qayta
+  foydalanadi (qayta transkripsiya qilmaydi). Butun pipeline ffmpeg orqali klient tomonida
+  ishlaydi (ASS/libass `\k`/`\t` override teglari) — video allaqachon lokal bo'lgani va
+  to'liq qayta kodlash CPU-og'ir ish bo'lgani uchun kichik umumiy VPS'ga proksi qilinmadi.
+- **Export preset qo'shildi** (`6846c37`, `video_h264_match_source.epr`) — Premiere'ning
+  o'zidan ("Export > Save Preset" off "Match Source - Adaptive High Bitrate") saqlangan,
+  qo'lda yozilmagan (`.epr` Adobe'ning yopiq formati). Shu bilan karaoke feature backend
+  dan ExtendScript'gacha to'liq ulandi.
+- **ffmpeg Windows-path bug tuzatildi** (`8546061`): ASS filtrining escape qilingan yo'li
+  (`C:\...` uchun kerak) ffmpeg'ning filtergraph parseri tomonidan hali ham noto'g'ri
+  parslanardi — drive-letter'dan keyingi `:` da bo'linib, undan oldingi hamma narsani
+  jimgina tashlab yuborardi, natijada Windows'da har bir karaoke-caption job muvaffaqiyatsiz
+  tugardi (`ass=C\:\Users\...` ishlamaydi, `ass='C\:\Users\...'` — bir xil escaping, bir
+  tirnoqqa o'ralgan — ishlaydi). Bu foydalanuvchi birinchi haqiqiy sinovda duch kelgan
+  muammo bo'lishi ehtimoli katta.
+- **Uslub oldindan ko'rish (preview) videolari** qo'shildi — matn yorlig'i o'rniga har
+  uslub uchun haqiqiy, aylanadigan preview klip (aynan export'dagi pipeline orqali, belgilangan
+  namuna jumla ustida bir marta render qilingan) — kinetic-typography uslub to'ri qanday
+  ishlasa, xuddi shunday.
+- **Versiya 1.4.15'ga oshirildi** (`d4ad877`) — muhim topilma: sessiyaning barcha panel-tomon
+  o'zgarishlari (karaoke feature, ffmpeg fix, style preview'lar, activation-flow fix) serverga
+  yuklangan edi, lekin hech qaysi o'rnatilgan panelga yetib bormagan edi —
+  `checkForUpdate()` faqat versiya raqami haqiqatan oshganida build'ni staging qiladi, va bu
+  raqam o'sha commit'lar bilan birga oshirilmagan edi. Testda karaoke tugmasi umuman
+  ko'rinmasligining sababi aynan shu edi.
+- **Uslub tanlash endi darhol generatsiyani boshlaydi** (`644319f`) — alohida "Karaoke video
+  yasash" tugmasini bosish shart emas, karta tanlashning o'zi yetarli. Eski tugma
+  `index.html`da (yashirin holda) qoldirildi — kelajakda qo'lda qayta ishga tushirish kerak
+  bo'lib qolsa deb.
+- **21 ta uslub** (`d2a1bfb`) — 7 tadan 21 taga, kinetic gallery hajmiga tenglashtirildi.
+  14 ta yangi preset (Instagram, YouTube, Spotify, Electric, Luxury Gold, Mint, Coral, Lime,
+  Cherry, Ocean, Sunshine, Grape, Rose Gold, Midnight) — xuddi asl 7 tasi kabi qurilgan
+  (yangi font/rang/animatsiya-shablon yozuvlari + render qilingan preview klip), yangi
+  muhandislik kerak bo'lmadi, chunki pipeline ixtiyoriy preset'larni allaqachon qo'llab-quvvatlaydi.
+- **Preview yo'li tuzatildi** (`ea38d55`): preview `<video>` teglari `client/index.html`dan
+  nisbiy `assets/...` URL orqali yuklanadi — ya'ni `client/`ning o'z papkasiga nisbatan
+  (kinetic-preview'lar joylashgan joy bilan bir xil). Yangi papka xato ravishda `host/`
+  ostiga qo'yilgan edi, shuning uchun har bir preview jimgina 404 berardi
+  (`video.onerror` elementni shunchaki yashiradi, hech narsa buzilganday ko'rinmaydi edi).
+
+### Keyingi qadam
+- Karaoke feature hali oxirigacha real Premiere'da sinovdan o'tkazilishi kerak: barcha 21
+  uslub, export preset to'g'ri ishlashi, va yangilangan panel (1.4.15) haqiqatan
+  o'rnatilgan CEP'ga yetib borishi.
+- CI/deploy bilan ishlaganda endi `appuser@aitilmoch.duckdns.org` ishlatilishini yodda tutish
+  (eski `ubuntu@` retired deb belgilangan, lekin box bir xil, shuning uchun qo'lda SSH kirish
+  hali ham `ubuntu@`/`shox-med-aws.pem` orqali mumkin).
+- Backend auto-update mexanizmi (`c981816`) haqiqiy foydalanuvchi muhitida hali sinovdan
+  o'tkazilmagan — birinchi marta eski backend'ni topib, o'zini almashtirishi kuzatilishi kerak.

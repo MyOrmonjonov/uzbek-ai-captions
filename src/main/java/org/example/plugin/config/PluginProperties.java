@@ -9,6 +9,7 @@ public class PluginProperties {
     private Whisper whisper = new Whisper();
     private Translate translate = new Translate();
     private Broll broll = new Broll();
+    private Web web = new Web();
     private String ffmpegPath = "ffmpeg";
 
     public Translate getTranslate() {
@@ -49,6 +50,14 @@ public class PluginProperties {
 
     public void setWhisper(Whisper whisper) {
         this.whisper = whisper;
+    }
+
+    public Web getWeb() {
+        return web;
+    }
+
+    public void setWeb(Web web) {
+        this.web = web;
     }
 
     /** Central license-verify server (srt_bot's licensing_server.py). */
@@ -107,6 +116,46 @@ public class PluginProperties {
 
         public void setServerUrl(String serverUrl) {
             this.serverUrl = serverUrl;
+        }
+    }
+
+    /** Only meaningful under the "webserver" profile — see application-webserver.properties. */
+    public static class Web {
+        private int maxConcurrentJobs = 2;
+        private int queueCapacity = 6;
+        private int freeUploadsPerIpPerDay = 3;
+        private int jobRetentionHours = 2;
+
+        public int getMaxConcurrentJobs() {
+            return maxConcurrentJobs;
+        }
+
+        public void setMaxConcurrentJobs(int maxConcurrentJobs) {
+            this.maxConcurrentJobs = maxConcurrentJobs;
+        }
+
+        public int getQueueCapacity() {
+            return queueCapacity;
+        }
+
+        public void setQueueCapacity(int queueCapacity) {
+            this.queueCapacity = queueCapacity;
+        }
+
+        public int getFreeUploadsPerIpPerDay() {
+            return freeUploadsPerIpPerDay;
+        }
+
+        public void setFreeUploadsPerIpPerDay(int freeUploadsPerIpPerDay) {
+            this.freeUploadsPerIpPerDay = freeUploadsPerIpPerDay;
+        }
+
+        public int getJobRetentionHours() {
+            return jobRetentionHours;
+        }
+
+        public void setJobRetentionHours(int jobRetentionHours) {
+            this.jobRetentionHours = jobRetentionHours;
         }
     }
 }
