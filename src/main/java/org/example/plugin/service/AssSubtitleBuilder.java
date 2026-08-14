@@ -2,8 +2,11 @@ package org.example.plugin.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.example.plugin.model.KaraokeStyle;
+import org.example.plugin.model.RenderOptions;
 import org.example.plugin.model.Word;
 
 /**
@@ -12,24 +15,70 @@ import org.example.plugin.model.Word;
  * rolled frame compositing because its \k (karaoke) and \t (transform/animation) override tags
  * already do exactly this job natively and reliably — see KaraokeStyle's javadoc for how the two
  * animation templates map to \k vs. per-word \t.
+ *
+ * options (RenderOptions) is web-tool-only display customization layered on top of a
+ * KaraokeStyle -- the desktop CEP panel always passes null here, which resolves to exactly the
+ * original hardcoded behavior (5-word chunks, one line, no wrap, bottom-center, style's own
+ * font, no case/script transform, no auto-emphasis), so the desktop output is unchanged.
  */
 final class AssSubtitleBuilder {
 
-    private static final int WORDS_PER_LINE = 5;
+    private static final int DEFAULT_WORDS_PER_GROUP = 5;
     // ASS \k values are in centiseconds and must be positive; a run of words with identical or
     // out-of-order ASR timestamps (rare, but seen with very short interjections) would otherwise
     // produce a zero/negative duration that libass either drops or renders as an instant flash.
     private static final int MIN_CENTISECONDS = 3;
 
+    private static final Pattern SENTENCE_END = Pattern.compile("[.!?]$");
+    private static final Pattern CLAUSE_END = Pattern.compile("[,.!?]$");
+    private static final Pattern TRAILING_PUNCT = Pattern.compile("[.,!?]+$");
+    private static final Set<String> CLAUSE_CONJUNCTIONS = Set.of(
+            "va", "lekin", "ammo", "biroq", "keyin", "chunki", "shuning", "uchun", "yoki", "ham");
+    private static final int SENTENCE_GROUP_CAP = 14;
+    private static final int CLAUSE_GROUP_CAP = 8;
+
+    // Short/functional Uzbek words that auto-emphasis skips -- everything else with 4+ letters
+    // is treated as "content" and gets emphasized. A heuristic, not real NLP importance scoring.
+    private static final Set<String> STOP_WORDS = Set.of(
+            "bo'ladi", "boladi", "edi", "va", "bir", "bu", "shu", "kabi", "uchun", "ham", "hozir",
+            "u", "biz", "siz", "men", "sen", "ular", "yoki", "lekin", "ammo", "biroq", "emas",
+            "bor", "yo'q", "yoq", "qildi", "qiladi", "bo'lib", "bolib", "deb", "esa", "ya'ni", "yani");
+
     private AssSubtitleBuilder() {
     }
 
     static String build(List<Word> words, KaraokeStyle style, int videoWidth, int videoHeight) {
+        return build(words, style, videoWidth, videoHeight, null);
+    }
+
+    static String build(List<Word> words, KaraokeStyle style, int videoWidth, int videoHeight, RenderOptions options) {
         int playResX = videoWidth > 0 ? videoWidth : 1080;
         int playResY = videoHeight > 0 ? videoHeight : 1920;
+
+        int wordsOnScreen = (options != null && options.wordsOnScreen() != null) ? options.wordsOnScreen() : DEFAULT_WORDS_PER_GROUP;
+        int wordsPerLine = (options != null && options.wordsPerLine() != null) ? options.wordsPerLine() : wordsOnScreen;
+        int textSizePercent = (options != null && options.textSizePercent() != null) ? options.textSizePercent() : 100;
+        String position = (options != null && options.position() != null) ? options.position() : "bottom";
+        boolean uppercase = options != null && options.uppercase();
+        boolean cyrillic = options != null && options.cyrillic();
+        boolean autoEmphasis = options != null && options.autoEmphasis();
+        String groupingMode = (options != null && options.groupingMode() != null) ? options.groupingMode() : "custom";
+        String fontName = (options != null && options.fontOverride() != null) ? options.fontOverride() : style.fontName();
+
         // Font sizes on KaraokeStylePresets are tuned against a 1920-tall reference frame so a
         // preset reads the same size regardless of the actual input resolution.
-        int fontSize = Math.max(10, Math.round(style.fontSize() * (playResY / 1920f)));
+        int fontSize = Math.max(10, Math.round(style.fontSize() * (playResY / 1920f) * (textSizePercent / 100f)));
+
+        int alignment = switch (position) {
+            case "top" -> 8;
+            case "middle" -> 5;
+            default -> 2;
+        };
+        int marginV = switch (position) {
+            case "top" -> Math.round(playResY * 0.08f);
+            case "middle" -> 0;
+            default -> Math.round(playResY * 0.15f);
+        };
 
         StringBuilder sb = new StringBuilder();
         sb.append("[Script Info]\n")
@@ -41,22 +90,30 @@ final class AssSubtitleBuilder {
                 .append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
                         + "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
                         + "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                .append("Style: Karaoke,").append(style.fontName()).append(',').append(fontSize).append(',')
+                .append("Style: Karaoke,").append(fontName).append(',').append(fontSize).append(',')
                 .append(style.baseColorAss()).append(',').append(style.highlightColorAss()).append(',')
                 .append(style.outlineColorAss()).append(",&H00000000,")
                 .append(style.bold() ? "-1" : "0")
-                .append(",0,0,0,100,100,0,0,1,5,0,2,60,60,")
-                .append(Math.round(playResY * 0.15)).append(",1\n\n")
+                .append(",0,0,0,100,100,0,0,1,5,0,").append(alignment).append(",60,60,")
+                .append(marginV).append(",1\n\n")
                 .append("[Events]\n")
                 .append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
 
-        for (List<Word> line : chunk(words, WORDS_PER_LINE)) {
+        for (List<Word> line : groupWords(words, groupingMode, wordsOnScreen)) {
             switch (style.template()) {
-                case KARAOKE_FILL -> appendKaraokeFillLine(sb, line);
-                case WORD_POP -> appendWordPopLines(sb, line, style);
+                case KARAOKE_FILL -> appendKaraokeFillLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, style);
+                case WORD_POP -> appendWordPopLines(sb, line, style, wordsPerLine, uppercase, cyrillic, autoEmphasis);
             }
         }
         return sb.toString();
+    }
+
+    private static List<List<Word>> groupWords(List<Word> words, String groupingMode, int wordsOnScreen) {
+        return switch (groupingMode) {
+            case "toliq_gap" -> groupByBoundary(words, SENTENCE_END, false, SENTENCE_GROUP_CAP);
+            case "manoga_qarab" -> groupByBoundary(words, CLAUSE_END, true, CLAUSE_GROUP_CAP);
+            default -> chunk(words, Math.max(1, wordsOnScreen));
+        };
     }
 
     private static List<List<Word>> chunk(List<Word> words, int size) {
@@ -67,7 +124,41 @@ final class AssSubtitleBuilder {
         return chunks;
     }
 
-    private static void appendKaraokeFillLine(StringBuilder sb, List<Word> line) {
+    /** Groups words until a boundary pattern matches the (trailing-punctuation-stripped, when checkConjunctions) word, or a conjunction word, or the size cap is hit. */
+    private static List<List<Word>> groupByBoundary(List<Word> words, Pattern boundaryPunct, boolean checkConjunctions, int cap) {
+        List<List<Word>> groups = new ArrayList<>();
+        List<Word> current = new ArrayList<>();
+        for (Word w : words) {
+            current.add(w);
+            String trimmed = w.text().strip();
+            boolean boundary = boundaryPunct.matcher(trimmed).find();
+            if (!boundary && checkConjunctions) {
+                String normalized = TRAILING_PUNCT.matcher(trimmed.toLowerCase()).replaceAll("");
+                boundary = CLAUSE_CONJUNCTIONS.contains(normalized);
+            }
+            if (boundary || current.size() >= cap) {
+                groups.add(current);
+                current = new ArrayList<>();
+            }
+        }
+        if (!current.isEmpty()) {
+            groups.add(current);
+        }
+        return groups;
+    }
+
+    private static boolean isEmphasized(String text) {
+        String normalized = TRAILING_PUNCT.matcher(text.strip().toLowerCase()).replaceAll("");
+        return normalized.length() >= 4 && !STOP_WORDS.contains(normalized);
+    }
+
+    private static String display(String text, boolean uppercase, boolean cyrillic) {
+        String result = cyrillic ? CyrillicTransliterator.toCyrillic(text) : text;
+        return uppercase ? result.toUpperCase() : result;
+    }
+
+    private static void appendKaraokeFillLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                               boolean uppercase, boolean cyrillic, boolean autoEmphasis, KaraokeStyle style) {
         double start = line.get(0).start();
         double end = line.get(line.size() - 1).end();
         StringBuilder text = new StringBuilder();
@@ -75,12 +166,22 @@ final class AssSubtitleBuilder {
             Word w = line.get(i);
             double durationSeconds = (i < line.size() - 1) ? (line.get(i + 1).start() - w.start()) : (w.end() - w.start());
             int centiseconds = Math.max(MIN_CENTISECONDS, (int) Math.round(durationSeconds * 100));
-            text.append("{\\k").append(centiseconds).append('}').append(escape(w.text())).append(' ');
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            text.append("{\\k").append(centiseconds).append('}');
+            if (autoEmphasis && isEmphasized(w.text())) {
+                text.append("{\\b1}").append(word).append("{\\b0}").append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
         }
         appendDialogue(sb, start, end, text.toString().stripTrailing());
     }
 
-    private static void appendWordPopLines(StringBuilder sb, List<Word> line, KaraokeStyle style) {
+    private static void appendWordPopLines(StringBuilder sb, List<Word> line, KaraokeStyle style, int wordsPerLine,
+                                            boolean uppercase, boolean cyrillic, boolean autoEmphasis) {
         for (int i = 0; i < line.size(); i++) {
             double start = line.get(i).start();
             double end = (i < line.size() - 1) ? line.get(i + 1).start() : line.get(i).end();
@@ -89,7 +190,8 @@ final class AssSubtitleBuilder {
             }
             StringBuilder text = new StringBuilder();
             for (int j = 0; j < line.size(); j++) {
-                String word = escape(line.get(j).text());
+                String word = escape(display(line.get(j).text(), uppercase, cyrillic));
+                boolean emphasized = autoEmphasis && isEmphasized(line.get(j).text());
                 if (j == i) {
                     // Pop-scale the active word up and settle back down, timed relative to THIS
                     // event's own Start (0ms) -- the reason this needs one Dialogue event per
@@ -98,8 +200,13 @@ final class AssSubtitleBuilder {
                     text.append("{\\c").append(style.highlightColorAss())
                             .append("\\t(0,120,\\fscx115\\fscy115)\\t(120,240,\\fscx100\\fscy100)}")
                             .append(word).append(' ');
+                } else if (emphasized) {
+                    text.append("{\\c").append(style.highlightColorAss()).append("\\b1}").append(word).append("{\\b0}").append(' ');
                 } else {
                     text.append("{\\c").append(style.baseColorAss()).append('}').append(word).append(' ');
+                }
+                if (wordsPerLine > 0 && (j + 1) % wordsPerLine == 0 && j < line.size() - 1) {
+                    text.append("\\N");
                 }
             }
             appendDialogue(sb, start, end, text.toString().stripTrailing());

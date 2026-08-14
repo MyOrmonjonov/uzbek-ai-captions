@@ -138,7 +138,7 @@ public class WebCaptionController {
         }
 
         try {
-            String jobId = orchestrationService.submit(videoPath, request.styleKey(), request.words());
+            String jobId = orchestrationService.submit(videoPath, request.styleKey(), request.words(), request.renderOptions());
             return ResponseEntity.ok(new JobIdResponse(jobId));
         } catch (ServerBusyException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ErrorResponse(e.getMessage()));

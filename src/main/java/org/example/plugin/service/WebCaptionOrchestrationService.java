@@ -16,6 +16,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.example.plugin.config.PluginProperties;
+import org.example.plugin.model.RenderOptions;
 import org.example.plugin.model.Word;
 import org.example.plugin.web.dto.KaraokeCaptionJobStatus;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -76,12 +77,12 @@ public class WebCaptionOrchestrationService {
     }
 
     /** @throws ServerBusyException if both the worker pool and its queue are already full. */
-    public String submit(Path videoPath, String styleKey, List<Word> words) {
+    public String submit(Path videoPath, String styleKey, List<Word> words, RenderOptions options) {
         String jobId = UUID.randomUUID().toString();
         JobState state = new JobState();
         jobs.put(jobId, state);
         try {
-            workExecutor.submit(() -> run(state, videoPath, styleKey, words));
+            workExecutor.submit(() -> run(state, videoPath, styleKey, words, options));
         } catch (RejectedExecutionException e) {
             jobs.remove(jobId);
             throw new ServerBusyException("Server hozircha band, birozdan keyin urinib ko'ring.");
@@ -97,11 +98,11 @@ public class WebCaptionOrchestrationService {
         return new Snapshot(state.status, state.stage, state.progressPercent, state.outputPath, state.error);
     }
 
-    private void run(JobState state, Path videoPath, String styleKey, List<Word> words) {
+    private void run(JobState state, Path videoPath, String styleKey, List<Word> words, RenderOptions options) {
         try {
             state.stage = "encoding";
             state.progressPercent = 5;
-            String innerJobId = karaokeCaptionService.submit(videoPath, words, styleKey);
+            String innerJobId = karaokeCaptionService.submit(videoPath, words, styleKey, options);
             pollInnerJob(state, innerJobId);
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "Web caption job failed", e);

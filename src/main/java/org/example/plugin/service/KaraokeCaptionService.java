@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 import org.example.plugin.config.KaraokeStylePresets;
 import org.example.plugin.config.PluginProperties;
 import org.example.plugin.model.KaraokeStyle;
+import org.example.plugin.model.RenderOptions;
 import org.example.plugin.model.Word;
 import org.example.plugin.web.dto.KaraokeCaptionJobStatus;
 import org.springframework.stereotype.Service;
@@ -57,11 +58,17 @@ public class KaraokeCaptionService {
         volatile String error;
     }
 
+    /** Desktop CEP panel entry point -- always renders with the style's own hardcoded defaults. */
     public String submit(Path videoPath, List<Word> words, String styleKey) {
+        return submit(videoPath, words, styleKey, null);
+    }
+
+    /** Web tool entry point -- options may be null (same defaults as above) or a RenderOptions customizing layout/text. */
+    public String submit(Path videoPath, List<Word> words, String styleKey, RenderOptions options) {
         String jobId = UUID.randomUUID().toString();
         JobState state = new JobState();
         jobs.put(jobId, state);
-        workExecutor.submit(() -> run(jobId, state, videoPath, words, styleKey));
+        workExecutor.submit(() -> run(jobId, state, videoPath, words, styleKey, options));
         return jobId;
     }
 
@@ -79,7 +86,7 @@ public class KaraokeCaptionService {
         return view;
     }
 
-    private void run(String jobId, JobState state, Path videoPath, List<Word> words, String styleKey) {
+    private void run(String jobId, JobState state, Path videoPath, List<Word> words, String styleKey, RenderOptions options) {
         Path sessionDir = null;
         try {
             KaraokeStyle style = KaraokeStylePresets.byKey(styleKey);
@@ -97,7 +104,7 @@ public class KaraokeCaptionService {
             state.progressPercent = 5;
             int[] resolution = detectResolution(videoPath);
 
-            String ass = AssSubtitleBuilder.build(words, style, resolution[0], resolution[1]);
+            String ass = AssSubtitleBuilder.build(words, style, resolution[0], resolution[1], options);
             Path assPath = sessionDir.resolve("captions.ass");
             Files.writeString(assPath, ass, StandardCharsets.UTF_8);
 
