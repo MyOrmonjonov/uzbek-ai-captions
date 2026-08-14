@@ -1,9 +1,16 @@
 import json
+import time
 
 from google import genai
 from google.genai import types
 
 import config
+
+# A transient Gemini blip (503 "high demand", or the rare bare 403 seen in practice) shouldn't
+# immediately fall back to uncorrected Turkish-leaked spelling -- a couple of quick retries
+# covers the common case where the very next attempt, seconds later, succeeds.
+MAX_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 1.5
 
 # Whisper is accurate on *timing* for low-resource languages like Uzbek but leaks Turkish-style
 # orthography into the words themselves (e.g. "başqa"/"uzaq" instead of "boshqa"/"uzoq") since
@@ -50,27 +57,32 @@ def get_client() -> genai.Client:
 def correct_words(words: list[str]) -> list[str]:
     """Fix Uzbek Latin spelling word-for-word via Gemini, preserving word count and order.
 
-    Falls back to returning the original words unchanged on any failure (API error, bad
-    JSON, wrong word count in the response) so a broken correction pass never desyncs
-    Whisper's word-level timestamps from the text.
+    Retries a couple of times (MAX_ATTEMPTS) on transient failures before giving up, since
+    Gemini's occasional 503/403 blips are usually gone within a few seconds. Falls back to
+    returning the original words unchanged only after all attempts fail (API error, bad JSON,
+    wrong word count in the response), so a broken correction pass never desyncs Whisper's
+    word-level timestamps from the text.
     """
     if not words:
         return words
-    try:
-        client = get_client()
-        prompt = PROMPT.format(n=len(words), words_json=json.dumps(words, ensure_ascii=False))
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={"type": "ARRAY", "items": {"type": "STRING"}},
-                temperature=0.0,
-            ),
-        )
-        corrected = json.loads(response.text)
-        if isinstance(corrected, list) and len(corrected) == len(words):
-            return [str(w) for w in corrected]
-    except Exception:
-        pass
+    client = get_client()
+    prompt = PROMPT.format(n=len(words), words_json=json.dumps(words, ensure_ascii=False))
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema={"type": "ARRAY", "items": {"type": "STRING"}},
+                    temperature=0.0,
+                ),
+            )
+            corrected = json.loads(response.text)
+            if isinstance(corrected, list) and len(corrected) == len(words):
+                return [str(w) for w in corrected]
+        except Exception:
+            pass
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SECONDS)
     return words
