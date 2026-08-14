@@ -12,6 +12,7 @@ surrounding real timestamps, the same way gemini_transcriber does it standalone.
 """
 
 import difflib
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -130,7 +131,16 @@ def transcribe(audio_path: Path) -> TranscriptionResult:
         whisper_future = pool.submit(transcriber.transcribe, audio_path)
         gemini_future = pool.submit(gemini_transcriber.transcribe, audio_path)
         whisper_result = whisper_future.result()
-        gemini_result = gemini_future.result()
+        try:
+            gemini_result = gemini_future.result()
+        except Exception:
+            # Gemini only adds spelling correction on top of Whisper's own real timestamps
+            # (see module docstring) -- if it's unavailable (rate limit, outage), Whisper's own
+            # result is still a complete, usable transcription on its own, so degrade to that
+            # instead of failing the whole request.
+            logging.getLogger(__name__).warning(
+                "Gemini transcription failed, falling back to Whisper-only result", exc_info=True)
+            return whisper_result
 
     aligned_words = _align_words(whisper_result.words, gemini_result.words)
     segments = _rebuild_segments(gemini_result.segments, aligned_words)
