@@ -143,7 +143,19 @@
   @media (min-width:960px){.editor-grid{grid-template-columns:1.1fr 1fr 0.8fr;}}
 
   .editor-video-col{display:flex;flex-direction:column;gap:12px;}
-  .editor-video{width:100%;border-radius:12px;background:#000;max-height:340px;}
+  .video-stage{position:relative;}
+  .editor-video{width:100%;border-radius:12px;background:#000;max-height:340px;display:block;}
+  .caption-overlay{
+    position:absolute;left:6%;right:6%;bottom:8%;
+    text-align:center;pointer-events:none;
+    font-size:clamp(16px,3.2vw,28px);line-height:1.3;
+  }
+  .overlay-word{
+    display:inline-block;margin:0 3px;-webkit-text-stroke:3px #000;paint-order:stroke fill;
+  }
+  @keyframes wordPop{0%{transform:scale(1);}50%{transform:scale(1.15);}100%{transform:scale(1);}}
+  .overlay-word.pop{animation:wordPop .24s ease;}
+  .download-render-btn{margin-top:20px;padding:15px;font-size:15.5px;}
 
   .editor-panel{
     background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:12px;
@@ -256,7 +268,10 @@
       </div>
       <div class="editor-grid">
         <div class="editor-video-col">
-          <video class="editor-video" id="editorVideo" controls></video>
+          <div class="video-stage" id="videoStage">
+            <video class="editor-video" id="editorVideo" controls></video>
+            <div class="caption-overlay" id="captionOverlay" style="display:none;"></div>
+          </div>
         </div>
         <div class="editor-panel">
           <h4>Matn (so'zga bosing — o'sha joyga o'tadi; ikki bosing — tahrirlang)</h4>
@@ -283,6 +298,10 @@
         </div>
       </div>
       <div class="error-box" id="editorError" style="display:none;"></div>
+      <button class="btn btn-accent btn-block download-render-btn" id="renderBtn" type="button" disabled>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+        <span id="renderBtnLabel">Avval uslub tanlang</span>
+      </button>
     </div>
 
     <!-- 5. Render progress -->
@@ -346,8 +365,8 @@
     });
   }
 
-  var state = { uploadId: null, file: null, objectUrl: null, words: [], styleKey: null, jobId: null,
-                audioBuffer: null, pxPerSecond: 60 };
+  var state = { uploadId: null, file: null, objectUrl: null, words: [], wordGroups: [], styleKey: null,
+                styleMeta: null, jobId: null, audioBuffer: null, pxPerSecond: 60 };
 
   function authHeaders() {
     var deviceCode = localStorage.getItem('ravon_device_code');
@@ -364,8 +383,11 @@
     if (state.objectUrl) {
       URL.revokeObjectURL(state.objectUrl);
     }
-    state = { uploadId: null, file: null, objectUrl: null, words: [], styleKey: null, jobId: null,
-              audioBuffer: null, pxPerSecond: 60 };
+    state = { uploadId: null, file: null, objectUrl: null, words: [], wordGroups: [], styleKey: null,
+              styleMeta: null, jobId: null, audioBuffer: null, pxPerSecond: 60 };
+    document.getElementById('captionOverlay').style.display = 'none';
+    document.getElementById('renderBtn').disabled = true;
+    document.getElementById('renderBtnLabel').textContent = 'Avval uslub tanlang';
     document.getElementById('fileInput').value = '';
     document.getElementById('uploadError').style.display = 'none';
     document.getElementById('editorError').style.display = 'none';
@@ -479,10 +501,13 @@
   }
 
   // ---- 3. Editor: transcript + waveform + styles ----
+  var WORDS_PER_GROUP = 5; // mirrors AssSubtitleBuilder.WORDS_PER_LINE exactly
+
   function showEditor() {
     showPanel('editor');
     renderTranscript();
     renderStylesIntoEditor();
+    state.wordGroups = groupWords(state.words, WORDS_PER_GROUP);
     if (state.audioBuffer) {
       renderWaveform();
     }
@@ -490,7 +515,16 @@
     video.ontimeupdate = function () {
       updateActiveWordChip(video.currentTime);
       updatePlayhead(video.currentTime);
+      updateCaptionOverlay(video.currentTime);
     };
+  }
+
+  function groupWords(words, size) {
+    var groups = [];
+    for (var i = 0; i < words.length; i += size) {
+      groups.push(words.slice(i, Math.min(words.length, i + size)));
+    }
+    return groups;
   }
 
   function renderTranscript() {
@@ -545,6 +579,66 @@
     }
   }
 
+  // Mirrors AssSubtitleBuilder.java's exact semantics (see that file): words are grouped
+  // 5-at-a-time by INDEX (not time); KARAOKE_FILL switches a word from base to highlight
+  // color once its own start time is reached and stays that way (ASS "hard karaoke" \k);
+  // WORD_POP shows the whole group plainly except one active word at a time, which gets a
+  // brief scale-up-then-back animation. This is a live approximation for instant feedback --
+  // the pixel-accurate result always comes from the actual ffmpeg/libass render.
+  var lastActiveWordIndex = -1;
+  function updateCaptionOverlay(currentTime) {
+    var overlay = document.getElementById('captionOverlay');
+    if (!state.styleMeta || overlay.style.display === 'none') return;
+
+    var group = state.wordGroups.filter(function (g) {
+      return g.length && currentTime >= g[0].start && currentTime < g[g.length - 1].end;
+    })[0];
+    if (!group) {
+      overlay.innerHTML = '';
+      lastActiveWordIndex = -1;
+      return;
+    }
+
+    var meta = state.styleMeta;
+    var fontStyle = 'font-family:' + meta.fontName + ',sans-serif;font-weight:' + (meta.bold ? '800' : '600') + ';';
+    var activeIdx = -1;
+    if (meta.template === 'WORD_POP') {
+      for (var i = 0; i < group.length; i++) {
+        var w = group[i];
+        var nextStart = (i < group.length - 1) ? group[i + 1].start : w.end;
+        if (currentTime >= w.start && currentTime < nextStart) { activeIdx = i; break; }
+      }
+    }
+
+    overlay.innerHTML = group.map(function (w, i) {
+      var color;
+      if (meta.template === 'KARAOKE_FILL') {
+        color = currentTime >= w.start ? meta.highlightColorHex : meta.primaryColorHex;
+      } else {
+        color = i === activeIdx ? meta.highlightColorHex : meta.primaryColorHex;
+      }
+      var popClass = (meta.template === 'WORD_POP' && i === activeIdx) ? ' pop' : '';
+      return '<span class="overlay-word' + popClass + '" style="' + fontStyle + 'color:' + color + '">' +
+        escapeHtml(w.text) + '</span>';
+    }).join('');
+
+    if (meta.template === 'WORD_POP' && activeIdx !== lastActiveWordIndex) {
+      var activeEl = overlay.children[activeIdx];
+      if (activeEl) {
+        activeEl.classList.remove('pop');
+        void activeEl.offsetWidth; // reflow, so the animation restarts
+        activeEl.classList.add('pop');
+      }
+    }
+    lastActiveWordIndex = activeIdx;
+  }
+
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   // ---- 4. Style gallery (inside editor) ----
   var stylesCache = null;
   function renderStylesIntoEditor() {
@@ -571,14 +665,30 @@
       card.addEventListener('click', function () {
         Array.prototype.forEach.call(grid.children, function (c) { c.classList.remove('picked'); });
         card.classList.add('picked');
-        pickStyle(s.key);
+        selectStyle(s);
       });
       grid.appendChild(card);
     });
   }
 
-  function pickStyle(styleKey) {
-    state.styleKey = styleKey;
+  // Picking a style is purely local -- no server call. It updates the live caption overlay
+  // (see updateCaptionOverlay) immediately, matching UzCaption's "style change appears
+  // instantly" behavior. The actual ffmpeg burn only happens when the visitor clicks the
+  // (always-visible) "Yuklab olish" button, via startRender() below.
+  function selectStyle(s) {
+    state.styleKey = s.key;
+    state.styleMeta = s;
+    document.getElementById('captionOverlay').style.display = 'block';
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    var btn = document.getElementById('renderBtn');
+    btn.disabled = false;
+    document.getElementById('renderBtnLabel').textContent = 'Yuklab olish';
+  }
+
+  document.getElementById('renderBtn').addEventListener('click', startRender);
+
+  function startRender() {
+    if (!state.styleKey) return;
     document.getElementById('editorError').style.display = 'none';
     showPanel('progress');
     document.getElementById('progressLabel').textContent = 'Navbatda...';
@@ -587,7 +697,7 @@
     fetch(WEB_API_BASE + '/web/caption', {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({ uploadId: state.uploadId, styleKey: styleKey, words: state.words })
+      body: JSON.stringify({ uploadId: state.uploadId, styleKey: state.styleKey, words: state.words })
     })
       .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
       .then(function (res) {

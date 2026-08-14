@@ -41,7 +41,7 @@ public class KaraokeCaptionController {
         return KaraokeStylePresets.all().stream()
                 .map(s -> new KaraokeStyleDto(s.key(), s.displayName(), s.fontName(),
                         AssColorUtil.toCssHex(s.baseColorAss()), AssColorUtil.toCssHex(s.highlightColorAss()),
-                        s.bold()))
+                        s.bold(), s.template().name()))
                 .toList();
     }
 
