@@ -728,6 +728,15 @@
     video.addEventListener('play', function () { setVideoPlayIcon(true); });
     video.addEventListener('pause', function () { setVideoPlayIcon(false); });
     video.addEventListener('ended', function () { setVideoPlayIcon(false); });
+    // Word-chip clicks (and waveform clicks) only seek, no auto-play -- 'seeked' fires whether
+    // or not playback follows, so the overlay/word-highlight/playhead/time-label still reflect
+    // the new position immediately even while the video stays paused.
+    video.addEventListener('seeked', function () {
+      updateActiveWordChip(video.currentTime);
+      updatePlayhead(video.currentTime);
+      updateCaptionOverlay(video.currentTime);
+      updateVideoTimeLabel();
+    });
     video.addEventListener('click', function () {
       if (video.paused) video.play(); else video.pause();
     });
@@ -824,9 +833,10 @@
       chip.dataset.index = idx;
       chip.addEventListener('click', function () {
         if (chip.getAttribute('contenteditable') === 'true') return;
-        var video = document.getElementById('editorVideo');
-        video.currentTime = word.start;
-        video.play();
+        // Seek only -- this is for jumping to where a word sits in the video, not for
+        // starting playback (see 'seeked' listener in initVideoControls for the resulting
+        // overlay/time-label/waveform-playhead refresh while still paused).
+        document.getElementById('editorVideo').currentTime = word.start;
       });
       chip.addEventListener('dblclick', function () {
         chip.setAttribute('contenteditable', 'true');
