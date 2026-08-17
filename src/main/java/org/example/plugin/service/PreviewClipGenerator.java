@@ -63,6 +63,12 @@ final class PreviewClipGenerator {
                     "-f", "lavfi", "-i", "color=c=0x" + BACKGROUND_HEX + ":s=" + WIDTH + "x" + HEIGHT + ":d=" + DURATION + ":r=30",
                     "-vf", "ass='" + escapedAssPath + "'",
                     "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    // moov (the atom a <video> element needs before it can determine
+                    // duration/start decoding) otherwise lands at the END of the file -- fine
+                    // for a full download, but a browser's initial Range request only sees mdat
+                    // and the video sits stuck at readyState 0 forever. +faststart moves moov to
+                    // the front.
+                    "-movflags", "+faststart",
                     outPath.toAbsolutePath().toString());
             Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
             String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

@@ -169,6 +169,10 @@ public class KaraokeCaptionService {
                 "-i", videoPath.toString(),
                 "-vf", "ass='" + escapedAssPath + "'",
                 "-c:a", "copy",
+                // Without this, moov (the index a player needs before it can start decoding)
+                // lands at the end of the file -- fine once fully downloaded, but breaks preview-
+                // while-downloading in a browser. Free to add: just reorders atoms, no re-encode.
+                "-movflags", "+faststart",
                 outputPath.toString()
         );
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
