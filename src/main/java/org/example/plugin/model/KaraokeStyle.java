@@ -22,6 +22,15 @@ package org.example.plugin.model;
  *   palette via \t for the chunk's whole duration.
  * - SHAKE: one Dialogue line per chunk, a quick oscillating \frz wiggle on entrance (settles by
  *   320ms) rather than a continuous shake, which would fight with readability.
+ * - PUNCH: one Dialogue line per chunk, scales in from oversized down to normal with a slight
+ *   overshoot ("impact" landing), via \fscx/\fscy \t.
+ * - CASCADE: one Dialogue line per chunk, but each WORD gets its own staggered fade+rise \t
+ *   (via \move) inside that single event, so words appear to fall into place one after another
+ *   instead of the whole line popping in at once.
+ * - BLUR_IN: one Dialogue line per chunk, animates \blur from blurred to sharp via \t.
+ * - BOXED_FILL: textually identical to KARAOKE_FILL (same \k fill), but the Style line uses
+ *   BorderStyle 3 (opaque box background, using BackColour) instead of 1 (outline) -- the
+ *   "captions on a solid card" look.
  */
 public record KaraokeStyle(
         String key,
@@ -41,5 +50,9 @@ public record KaraokeStyle(
         TYPEWRITER,
         COLOR_CYCLE,
         SHAKE,
+        PUNCH,
+        CASCADE,
+        BLUR_IN,
+        BOXED_FILL,
     }
 }

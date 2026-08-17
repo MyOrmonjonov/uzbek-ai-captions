@@ -66,7 +66,15 @@ public final class KaraokeStylePresets {
             new KaraokeStyle("kocha", "Ko'cha", "Arial", 84, true,
                     "&H00FFFFFF", "&H00FF6EC7", "&H00000000", AnimationTemplate.COLOR_CYCLE),
             new KaraokeStyle("boron", "Bo'ron", "Impact", 84, true,
-                    "&H00FFFFFF", "&H0000D7FF", "&H00000000", AnimationTemplate.SHAKE)
+                    "&H00FFFFFF", "&H0000D7FF", "&H00000000", AnimationTemplate.SHAKE),
+            new KaraokeStyle("zarba", "Zarba", "Impact", 88, true,
+                    "&H00FFFFFF", "&H000000FF", "&H00000000", AnimationTemplate.PUNCH),
+            new KaraokeStyle("tolqin", "To'lqin", "Arial", 82, true,
+                    "&H00FFFFFF", "&H00FF9900", "&H00000000", AnimationTemplate.CASCADE),
+            new KaraokeStyle("nafas", "Nafas", "Georgia", 78, false,
+                    "&H00FFFFFF", "&H00D8B400", "&H00000000", AnimationTemplate.BLUR_IN),
+            new KaraokeStyle("tun", "Tun", "Arial", 78, true,
+                    "&H00FFFFFF", "&H0000D7FF", "&H00000000", AnimationTemplate.BOXED_FILL)
     );
 
     private static final Map<String, KaraokeStyle> BY_KEY = new LinkedHashMap<>();

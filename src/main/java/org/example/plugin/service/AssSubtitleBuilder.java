@@ -99,20 +99,28 @@ final class AssSubtitleBuilder {
                 .append(baseColorAss).append(',').append(highlightColorAss).append(',')
                 .append(style.outlineColorAss()).append(",&H00000000,")
                 .append(style.bold() ? "-1" : "0")
-                .append(",0,0,0,100,100,0,0,1,").append(outlineWidth).append(",0,").append(alignment).append(",60,60,")
+                // BorderStyle 3 (box) instead of 1 (outline) for BOXED_FILL -- reuses the same
+                // already-opaque BackColour above as the box fill, "Outline" becomes box border
+                // width instead of outline width under BorderStyle 3, both meanings of the same
+                // ASS field.
+                .append(",0,0,0,100,100,0,0,").append(style.template() == KaraokeStyle.AnimationTemplate.BOXED_FILL ? 3 : 1)
+                .append(',').append(outlineWidth).append(",0,").append(alignment).append(",60,60,")
                 .append(marginV).append(",1\n\n")
                 .append("[Events]\n")
                 .append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
 
         for (List<Word> line : groupWords(words, groupingMode, wordsOnScreen)) {
             switch (style.template()) {
-                case KARAOKE_FILL -> appendKaraokeFillLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, style);
+                case KARAOKE_FILL, BOXED_FILL -> appendKaraokeFillLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, style);
                 case WORD_POP -> appendWordPopLines(sb, line, baseColorAss, highlightColorAss, wordsPerLine, uppercase, cyrillic, autoEmphasis);
                 case SLIDE_IN -> appendSlideInLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis,
                         baseColorAss, highlightColorAss, alignment, playResX, playResY, marginV);
                 case TYPEWRITER -> appendTypewriterLine(sb, line, uppercase, cyrillic);
                 case COLOR_CYCLE -> appendColorCycleLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss);
                 case SHAKE -> appendShakeLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss, highlightColorAss);
+                case PUNCH -> appendPunchLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss, highlightColorAss);
+                case CASCADE -> appendCascadeLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss, highlightColorAss);
+                case BLUR_IN -> appendBlurInLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss, highlightColorAss);
             }
         }
         return sb.toString();
@@ -337,6 +345,85 @@ final class AssSubtitleBuilder {
         // fine for a brief wiggle like this.
         StringBuilder text = new StringBuilder(
                 "{\\frz0\\t(0,60,\\frz-6)\\t(60,120,\\frz6)\\t(120,180,\\frz-4)\\t(180,240,\\frz4)\\t(240,320,\\frz0)}");
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            if (emphasized) {
+                text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0\\c").append(baseColorAss).append('}').append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
+    }
+
+    private static void appendPunchLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                         boolean uppercase, boolean cyrillic, boolean autoEmphasis,
+                                         String baseColorAss, String highlightColorAss) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+
+        // Scales in from oversized, overshoots slightly small, then settles at 100% -- an
+        // "impact" landing rather than a smooth pop.
+        StringBuilder text = new StringBuilder(
+                "{\\fscx160\\fscy160\\t(0,90,\\fscx90\\fscy90)\\t(90,160,\\fscx100\\fscy100)}");
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            if (emphasized) {
+                text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0\\c").append(baseColorAss).append('}').append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
+    }
+
+    private static void appendCascadeLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                           boolean uppercase, boolean cyrillic, boolean autoEmphasis,
+                                           String baseColorAss, String highlightColorAss) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+        // No \move here (unlike SLIDE_IN) -- staggering each word's own \move would need each
+        // word's actual on-screen x-offset within the line, which ASS gives no way to query from
+        // Java. A staggered alpha-only fade still reads as "words falling into place one after
+        // another" without needing that.
+        int staggerMs = 90;
+
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            long delay = (long) i * staggerMs;
+            text.append("{\\alpha&HFF&\\t(").append(delay).append(',').append(delay + 150).append(",\\alpha&H00&)}");
+            if (emphasized) {
+                text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0\\c").append(baseColorAss).append('}').append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
+    }
+
+    private static void appendBlurInLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                          boolean uppercase, boolean cyrillic, boolean autoEmphasis,
+                                          String baseColorAss, String highlightColorAss) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+
+        StringBuilder text = new StringBuilder("{\\blur6\\t(0,220,\\blur0)}");
         for (int i = 0; i < line.size(); i++) {
             Word w = line.get(i);
             String word = escape(display(w.text(), uppercase, cyrillic));
