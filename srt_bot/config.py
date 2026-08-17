@@ -19,11 +19,21 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8").strip()
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "").strip() or None
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-if not GEMINI_API_KEY:
+
+# GEMINI_API_KEYS (plural, comma-separated) is what gemini_keys.py round-robins across for
+# the subtitle pipeline (gemini_transcriber.py, spelling_correction.py) -- each free-tier key
+# has its own daily request quota, so spreading calls across several multiplies how many
+# transcriptions the bot can serve before any of them starts erroring. Falls back to the single
+# GEMINI_API_KEY for anyone who hasn't added the plural var yet. Everything else that calls
+# Gemini directly (broll.py, proxy_server.py) still just uses the first key.
+GEMINI_API_KEYS = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()] \
+    or ([GEMINI_API_KEY] if GEMINI_API_KEY else [])
+if not GEMINI_API_KEYS:
     raise RuntimeError(
-        "GEMINI_API_KEY topilmadi. srt_bot/.env fayliga GEMINI_API_KEY qo'shing "
-        "(transkripsiya, tarjima va B-roll uchun barchasi shu kalitni ishlatadi)."
+        "GEMINI_API_KEY topilmadi. srt_bot/.env fayliga GEMINI_API_KEY (bitta) yoki "
+        "GEMINI_API_KEYS (vergul bilan ajratilgan bir nechtasi) qo'shing."
     )
+GEMINI_API_KEY = GEMINI_API_KEYS[0]
 
 # Premiere/AE plugin's translation transcription and B-roll (Pexels/Giphy) now proxy
 # through this server instead of calling those APIs directly from each user's local

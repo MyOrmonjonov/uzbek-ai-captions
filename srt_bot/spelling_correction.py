@@ -4,7 +4,7 @@ import time
 from google import genai
 from google.genai import types
 
-import config
+import gemini_keys
 
 # A transient Gemini blip (503 "high demand", or the rare bare 403 seen in practice) shouldn't
 # immediately fall back to uncorrected Turkish-leaked spelling -- a couple of quick retries
@@ -44,29 +44,28 @@ qo'shma:
 ["so'z1", "so'z2", ...]
 """
 
-_client: genai.Client | None = None
-
-
-def get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=config.GEMINI_API_KEY)
-    return _client
-
-
 def correct_words(words: list[str]) -> list[str]:
     """Fix Uzbek Latin spelling word-for-word via Gemini, preserving word count and order.
 
     Retries a couple of times (MAX_ATTEMPTS) on transient failures before giving up, since
-    Gemini's occasional 503/403 blips are usually gone within a few seconds. Falls back to
-    returning the original words unchanged only after all attempts fail (API error, bad JSON,
-    wrong word count in the response), so a broken correction pass never desyncs Whisper's
-    word-level timestamps from the text.
+    Gemini's occasional 503/403 blips are usually gone within a few seconds. A daily-quota
+    (429) error instead rotates to the next configured key via gemini_keys, since retrying an
+    exhausted key on the same day would never succeed. Falls back to returning the original
+    words unchanged only once every attempt/key is exhausted (API error, bad JSON, wrong word
+    count in the response), so a broken correction pass never desyncs Whisper's word-level
+    timestamps from the text.
     """
     if not words:
         return words
-    client = get_client()
     prompt = PROMPT.format(n=len(words), words_json=json.dumps(words, ensure_ascii=False))
+    try:
+        corrected = gemini_keys.call_with_rotation(lambda client: _correct_with_client(client, words, prompt))
+    except Exception:
+        return words
+    return corrected if corrected is not None else words
+
+
+def _correct_with_client(client: genai.Client, words: list[str], prompt: str) -> list[str] | None:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             response = client.models.generate_content(
@@ -81,8 +80,9 @@ def correct_words(words: list[str]) -> list[str]:
             corrected = json.loads(response.text)
             if isinstance(corrected, list) and len(corrected) == len(words):
                 return [str(w) for w in corrected]
-        except Exception:
-            pass
+        except Exception as exc:
+            if gemini_keys.is_quota_error(exc):
+                raise
         if attempt < MAX_ATTEMPTS:
             time.sleep(RETRY_DELAY_SECONDS)
-    return words
+    return None

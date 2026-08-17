@@ -5,7 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-import config
+import gemini_keys
 from transcriber import Segment, TranscriptionResult, Word
 
 # Pinned (not "-latest") so cost and quota behavior stay predictable — "-latest" silently
@@ -84,15 +84,6 @@ RESPONSE_SCHEMA = {
 
 logger = logging.getLogger(__name__)
 
-_client: genai.Client | None = None
-
-
-def get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=config.GEMINI_API_KEY)
-    return _client
-
 
 def _interpolate_words(text: str, start: float, end: float) -> list[Word]:
     tokens = text.split()
@@ -112,7 +103,11 @@ def _interpolate_words(text: str, start: float, end: float) -> list[Word]:
 
 
 def transcribe(audio_path: Path, translate_to: str | None = None) -> TranscriptionResult:
-    client = get_client()
+    return gemini_keys.call_with_rotation(
+        lambda client: _transcribe_with_client(client, audio_path, translate_to))
+
+
+def _transcribe_with_client(client: genai.Client, audio_path: Path, translate_to: str | None) -> TranscriptionResult:
     uploaded = client.files.upload(file=str(audio_path))
     try:
         response = client.models.generate_content(
