@@ -562,6 +562,7 @@
     state = { uploadId: null, file: null, objectUrl: null, words: [], wordGroups: [], styleKey: null,
               styleMeta: null, jobId: null, audioBuffer: null, pxPerSecond: 60,
               renderOptions: defaultRenderOptions(), timeShiftSeconds: 0 };
+    clearSession();
     document.getElementById('captionOverlay').style.display = 'none';
     document.getElementById('renderBtn').disabled = true;
     document.getElementById('renderBtnLabel').textContent = 'Avval uslub tanlang';
@@ -1037,6 +1038,7 @@
       byCategory[cat].forEach(function (s) {
         var card = document.createElement('div');
         card.className = 'style-card';
+        card.dataset.key = s.key;
         // Same short looping preview clip (real ffmpeg/ASS pipeline, rendered once at build
         // time against a fixed sample phrase) the CEP panel's own style gallery already uses --
         // beats guessing what "TikTok Bold" looks like from a static colored-text label.
@@ -1468,6 +1470,86 @@
     state.pxPerSecond = Math.max(15, state.pxPerSecond / 1.4);
     if (state.audioBuffer) renderWaveform();
   });
+
+  // ---- Session persistence (survives a page refresh) ----
+  // A refresh used to wipe everything -- the video a visitor had already waited through
+  // transcription for, their edits, their style pick -- back to the empty upload screen.
+  // IndexedDB (not localStorage: a video file can be tens/hundreds of MB, well past
+  // localStorage's string-only ~5-10MB quota) stores the uploaded Blob + transcript + style/
+  // settings on 'beforeunload' and restores it on the next load. Best-effort throughout: if
+  // IndexedDB is unavailable or the save fails (quota, private browsing), it just degrades to
+  // today's behavior -- a refresh loses the session -- rather than breaking anything.
+  var SESSION_DB_NAME = 'ravon-subtitr';
+  var SESSION_STORE_NAME = 'session';
+  var SESSION_KEY = 'current';
+
+  function openSessionDb() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no indexedDB')); return; }
+      var req = indexedDB.open(SESSION_DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(SESSION_STORE_NAME); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function saveSession() {
+    if (!state.file || !state.words.length) return;
+    openSessionDb().then(function (db) {
+      db.transaction(SESSION_STORE_NAME, 'readwrite').objectStore(SESSION_STORE_NAME).put({
+        file: state.file, words: state.words, styleKey: state.styleKey,
+        renderOptions: state.renderOptions, timeShiftSeconds: state.timeShiftSeconds,
+        uploadId: state.uploadId
+      }, SESSION_KEY);
+    }).catch(function () { /* best-effort */ });
+  }
+
+  function clearSession() {
+    openSessionDb().then(function (db) {
+      db.transaction(SESSION_STORE_NAME, 'readwrite').objectStore(SESSION_STORE_NAME).delete(SESSION_KEY);
+    }).catch(function () { /* best-effort */ });
+  }
+
+  function applySavedSession(saved, styles) {
+    state.file = saved.file;
+    state.objectUrl = URL.createObjectURL(saved.file);
+    state.words = saved.words;
+    state.styleKey = saved.styleKey;
+    state.renderOptions = saved.renderOptions || defaultRenderOptions();
+    state.timeShiftSeconds = saved.timeShiftSeconds || 0;
+    state.uploadId = saved.uploadId;
+    document.getElementById('editorVideo').src = state.objectUrl;
+    decodeAudioForWaveform(saved.file);
+    // Populating stylesCache before showEditor() means its own internal
+    // renderStylesIntoEditor() call renders from cache synchronously, so the matching card
+    // already exists in the DOM by the time this function marks/selects it below.
+    if (styles) stylesCache = styles;
+    showEditor();
+    var match = styles && state.styleKey ? styles.filter(function (s) { return s.key === state.styleKey; })[0] : null;
+    if (match) {
+      selectStyle(match);
+      document.querySelectorAll('#styleGrid .style-card').forEach(function (c) {
+        c.classList.toggle('picked', c.dataset.key === match.key);
+      });
+    }
+  }
+
+  function restoreSession() {
+    openSessionDb().then(function (db) {
+      var req = db.transaction(SESSION_STORE_NAME, 'readonly').objectStore(SESSION_STORE_NAME).get(SESSION_KEY);
+      req.onsuccess = function () {
+        var saved = req.result;
+        if (!saved || !saved.file || !saved.words || !saved.words.length) return;
+        fetch(WEB_API_BASE + '/karaoke-styles')
+          .then(function (r) { return r.json(); })
+          .then(function (styles) { applySavedSession(saved, styles); })
+          .catch(function () { applySavedSession(saved, null); });
+      };
+    }).catch(function () { /* no saved session, or IndexedDB unavailable */ });
+  }
+
+  window.addEventListener('beforeunload', saveSession);
+  restoreSession();
 })();
 </script>
 
