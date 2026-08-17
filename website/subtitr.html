@@ -142,19 +142,50 @@
   .editor-grid{display:grid;grid-template-columns:1fr;gap:20px;}
   @media (min-width:960px){.editor-grid{grid-template-columns:1.1fr 1fr 0.8fr;}}
 
-  .editor-video-col{display:flex;flex-direction:column;gap:12px;}
-  .video-stage{position:relative;}
-  .editor-video{width:100%;border-radius:12px;background:#000;max-height:340px;display:block;}
+  .editor-video-col{display:flex;flex-direction:column;gap:14px;align-items:center;}
+  .video-stage{
+    position:relative;width:100%;max-width:280px;aspect-ratio:9/16;
+    border-radius:16px;overflow:hidden;background:#000;
+  }
+  .video-stage:fullscreen,.video-stage:-webkit-full-screen{max-width:none;border-radius:0;}
+  .editor-video{width:100%;height:100%;object-fit:cover;display:block;transition:transform .2s var(--ease);}
+  .editor-video.mirrored{transform:scaleX(-1);}
   .caption-overlay{
     position:absolute;left:6%;right:6%;bottom:8%;
     text-align:center;pointer-events:none;
     font-size:clamp(16px,3.2vw,28px);line-height:1.3;
   }
   .overlay-word{
-    display:inline-block;margin:0 3px;-webkit-text-stroke:3px #000;paint-order:stroke fill;
+    display:inline-block;margin:0 3px;paint-order:stroke fill;
   }
   @keyframes wordPop{0%{transform:scale(1);}50%{transform:scale(1.15);}100%{transform:scale(1);}}
   .overlay-word.pop{animation:wordPop .24s ease;}
+  .video-scrub-bar{
+    position:absolute;left:0;right:0;bottom:0;z-index:2;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 10px;background:linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+  }
+  .video-time{color:#fff;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .video-fullscreen-btn{
+    width:26px;height:26px;border-radius:7px;border:none;flex-shrink:0;
+    background:rgba(0,0,0,0.45);color:#fff;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .video-fullscreen-btn:hover{background:rgba(0,0,0,0.65);}
+  .video-controls-row{display:flex;align-items:center;justify-content:center;gap:12px;}
+  .video-ctrl-btn{
+    width:38px;height:38px;border-radius:999px;flex-shrink:0;
+    border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text);
+    display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+    font-size:12px;font-weight:700;font-family:inherit;transition:border-color .15s,color .15s;
+  }
+  .video-ctrl-btn:hover{border-color:var(--glass-hover-border);color:var(--text);}
+  .video-ctrl-btn.active{border-color:var(--accent);color:var(--accent);}
+  .video-ctrl-btn.play{
+    width:48px;height:48px;border:none;background:var(--accent);color:#140f33;
+    box-shadow:0 8px 20px -6px rgba(124,111,239,.7);
+  }
+  .video-ctrl-btn.play:hover{background:#9184f3;color:#140f33;}
   .download-render-btn{margin-top:20px;padding:15px;font-size:15.5px;}
 
   .editor-panel{
@@ -206,6 +237,13 @@
     transition:border-color .2s,background .2s;
   }
   .font-btn.active{border-color:var(--accent);background:rgba(124,111,239,0.15);}
+  .color-picker{
+    width:40px;height:32px;border-radius:8px;border:1px solid var(--glass-border);
+    background:transparent;padding:0;cursor:pointer;
+  }
+  .color-picker::-webkit-color-swatch-wrapper{padding:2px;}
+  .color-picker::-webkit-color-swatch{border-radius:6px;border:none;}
+  .color-picker::-moz-color-swatch{border-radius:6px;border:none;}
   .size-slider-row{display:flex;align-items:center;gap:10px;flex:1;max-width:220px;}
   .size-slider-row input[type=range]{flex:1;accent-color:var(--accent);}
   .size-slider-row span{min-width:40px;text-align:right;font-size:12.5px;color:var(--text-dim);}
@@ -297,8 +335,26 @@
       <div class="editor-grid">
         <div class="editor-video-col">
           <div class="video-stage" id="videoStage">
-            <video class="editor-video" id="editorVideo" controls></video>
+            <video class="editor-video" id="editorVideo" playsinline></video>
             <div class="caption-overlay" id="captionOverlay" style="display:none;"></div>
+            <div class="video-scrub-bar">
+              <span class="video-time" id="videoTimeLabel">0:00 / 0:00</span>
+              <button type="button" class="video-fullscreen-btn" id="videoFullscreenBtn" title="To'liq ekran">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="video-controls-row">
+            <button type="button" class="video-ctrl-btn" id="videoRestartBtn" title="Boshiga qaytarish">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="5" width="2.5" height="14" rx="1"/><path d="M19 5v14L8 12z"/></svg>
+            </button>
+            <button type="button" class="video-ctrl-btn play" id="videoPlayBtn" title="Ijro etish">
+              <svg id="videoPlayIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button type="button" class="video-ctrl-btn" id="videoSpeedBtn" title="Tezlik">1x</button>
+            <button type="button" class="video-ctrl-btn" id="videoMirrorBtn" title="Ko'zguda aks ettirish">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M21 7H9"/><path d="M7 21l-4-4 4-4"/><path d="M3 17h12"/></svg>
+            </button>
           </div>
         </div>
         <div class="editor-panel">
@@ -363,6 +419,15 @@
               <span id="textSizeValue">100%</span>
             </div>
           </div>
+          <div class="setting-row">
+            <div class="setting-label">Matn rangi</div>
+            <input type="color" class="color-picker" id="textColorPicker" value="#FFFFFF">
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">Urg'u rangi</div>
+            <input type="color" class="color-picker" id="accentColorPicker" value="#FFE600">
+          </div>
+          <label class="checkbox-row"><input type="checkbox" id="outlineToggle" checked> Kontur</label>
           <div class="setting-row">
             <div>
               <div class="setting-label">Hammasini surish</div>
@@ -463,7 +528,8 @@
     return {
       groupingMode: 'qisqa', wordsOnScreen: 3, wordsPerLine: 3, textSizePercent: 100,
       position: 'middle', uppercase: false, fontOverride: null,
-      autoEmphasis: false, cyrillic: false
+      autoEmphasis: false, cyrillic: false,
+      textColorHex: null, accentColorHex: null, outline: true
     };
   }
 
@@ -620,8 +686,75 @@
       updateActiveWordChip(video.currentTime);
       updatePlayhead(video.currentTime);
       updateCaptionOverlay(video.currentTime);
+      updateVideoTimeLabel();
     };
   }
+
+  // ---- Custom video controls (native <video controls> replaced so a 9:16 stage with its
+  // own play/restart/speed/mirror row matches the rest of the tool's design instead of each
+  // browser's own inconsistent control bar) ----
+  function formatVideoTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) seconds = 0;
+    var m = Math.floor(seconds / 60);
+    var s = Math.floor(seconds % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function updateVideoTimeLabel() {
+    var video = document.getElementById('editorVideo');
+    document.getElementById('videoTimeLabel').textContent =
+      formatVideoTime(video.currentTime) + ' / ' + formatVideoTime(video.duration);
+  }
+
+  function setVideoPlayIcon(isPlaying) {
+    document.getElementById('videoPlayIcon').innerHTML = isPlaying
+      ? '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+      : '<path d="M8 5v14l11-7z"/>';
+    document.getElementById('videoPlayBtn').title = isPlaying ? 'Pauza' : "Ijro etish";
+  }
+
+  (function initVideoControls() {
+    var video = document.getElementById('editorVideo');
+    var videoStage = document.getElementById('videoStage');
+
+    video.addEventListener('loadedmetadata', updateVideoTimeLabel);
+    video.addEventListener('play', function () { setVideoPlayIcon(true); });
+    video.addEventListener('pause', function () { setVideoPlayIcon(false); });
+    video.addEventListener('ended', function () { setVideoPlayIcon(false); });
+    video.addEventListener('click', function () {
+      if (video.paused) video.play(); else video.pause();
+    });
+
+    document.getElementById('videoPlayBtn').addEventListener('click', function () {
+      if (video.paused) video.play(); else video.pause();
+    });
+
+    document.getElementById('videoRestartBtn').addEventListener('click', function () {
+      video.currentTime = 0;
+      updateVideoTimeLabel();
+    });
+
+    var SPEED_STEPS = [1, 1.5, 2, 0.5];
+    var speedIdx = 0;
+    document.getElementById('videoSpeedBtn').addEventListener('click', function () {
+      speedIdx = (speedIdx + 1) % SPEED_STEPS.length;
+      video.playbackRate = SPEED_STEPS[speedIdx];
+      this.textContent = SPEED_STEPS[speedIdx] + 'x';
+    });
+
+    document.getElementById('videoMirrorBtn').addEventListener('click', function () {
+      video.classList.toggle('mirrored');
+      this.classList.toggle('active', video.classList.contains('mirrored'));
+    });
+
+    document.getElementById('videoFullscreenBtn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      // Fullscreens the whole stage (not just <video>) so the burned-caption overlay preview
+      // stays visible in fullscreen too, not just the raw video.
+      if (videoStage.requestFullscreen) videoStage.requestFullscreen();
+      else if (videoStage.webkitRequestFullscreen) videoStage.webkitRequestFullscreen();
+    });
+  })();
 
   function recomputeGroups() {
     state.wordGroups = groupWords(state.words, state.renderOptions.groupingMode, state.renderOptions.wordsOnScreen);
@@ -800,19 +933,22 @@
       }
     }
 
+    var baseColor = opts.textColorHex || meta.primaryColorHex;
+    var accentColor = opts.accentColorHex || meta.highlightColorHex;
+    var strokeStyle = opts.outline !== false ? '-webkit-text-stroke:3px #000;' : '';
     var html = group.map(function (w, i) {
       var emphasized = opts.autoEmphasis && isEmphasized(w.text);
       var color;
       if (meta.template === 'KARAOKE_FILL') {
-        color = (currentTime >= w.start || emphasized) ? meta.highlightColorHex : meta.primaryColorHex;
+        color = (currentTime >= w.start || emphasized) ? accentColor : baseColor;
       } else {
-        color = (i === activeIdx || emphasized) ? meta.highlightColorHex : meta.primaryColorHex;
+        color = (i === activeIdx || emphasized) ? accentColor : baseColor;
       }
       var popClass = (meta.template === 'WORD_POP' && i === activeIdx) ? ' pop' : '';
       var weight = emphasized ? ';font-weight:800' : '';
       var text = displayText(w.text, opts);
       var br = (wordsPerLine > 0 && (i + 1) % wordsPerLine === 0 && i < group.length - 1) ? '<br>' : '';
-      return '<span class="overlay-word' + popClass + '" style="' + fontStyle + 'color:' + color + weight + '">' +
+      return '<span class="overlay-word' + popClass + '" style="' + fontStyle + strokeStyle + 'color:' + color + weight + '">' +
         escapeHtml(text) + '</span>' + br;
     }).join('');
     overlay.innerHTML = html;
@@ -932,6 +1068,9 @@
     document.getElementById('uppercaseToggle').checked = false;
     document.getElementById('autoEmphasisToggle').checked = false;
     document.getElementById('cyrillicToggle').checked = false;
+    document.getElementById('textColorPicker').value = '#FFFFFF';
+    document.getElementById('accentColorPicker').value = '#FFE600';
+    document.getElementById('outlineToggle').checked = true;
   }
 
   document.querySelectorAll('#groupingModeButtons .mode-btn').forEach(function (btn) {
@@ -995,6 +1134,18 @@
   });
   document.getElementById('cyrillicToggle').addEventListener('change', function () {
     state.renderOptions.cyrillic = this.checked;
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+  });
+  document.getElementById('textColorPicker').addEventListener('input', function () {
+    state.renderOptions.textColorHex = this.value;
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+  });
+  document.getElementById('accentColorPicker').addEventListener('input', function () {
+    state.renderOptions.accentColorHex = this.value;
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+  });
+  document.getElementById('outlineToggle').addEventListener('change', function () {
+    state.renderOptions.outline = this.checked;
     updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
   });
 

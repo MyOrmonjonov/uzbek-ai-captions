@@ -1737,3 +1737,71 @@ tekshirilganda 11 ta commit borligi aniqlandi (2026-08-13 11:11 dan 2026-08-14 0
   hali ham `ubuntu@`/`shox-med-aws.pem` orqali mumkin).
 - Backend auto-update mexanizmi (`c981816`) haqiqiy foydalanuvchi muhitida hali sinovdan
   o'tkazilmagan — birinchi marta eski backend'ni topib, o'zini almashtirishi kuzatilishi kerak.
+
+## 2026-08-17 — CI versiyani o'zi oshiradi, faollashtirish token-pastesiz, srt_bot serverda 3 kun eskirgan ekan
+
+- **Muammo**: foydalanuvchi "yangilanish qilsam, foydalanuvchilarda avtomatik yetib bormayapti"
+  deb shikoyat qildi. Sabab topildi: `cep-extension/CSXS/manifest.xml`ning
+  `ExtensionBundleVersion`i va `client/js/main.js`ning `PLUGIN_VERSION`i **ikkalasi ham qo'lda**
+  tahrirlangan — biror commit'da bittasini oshirishni unutish (aynan 2026-08-14'da bir marta
+  sodir bo'lgan, `d4ad877`) `checkForUpdate()`ni butunlay jimgina ishlamay qo'yadi (xato
+  chiqmaydi, shunchaki "yangi versiya yo'q" deb topadi).
+- **Tuzatish** (`798d640`): `.github/workflows/build-backend.yml`ning `build-windows`
+  job'iga "Write plugin version" qadami qo'shildi — endi manifest.xml + main.js ikkalasi ham
+  `backend-version.txt` kabi `github.run_number`dan avtomatik yoziladi (`1.4.<run_number>`),
+  hech kim qo'lda tegmaydi. Push'dan keyin **jonli tekshirildi**: `GET /plugin/version` →
+  `1.4.31` (run #31'dan).
+- **Faollashtirish oqimi soddalashtirildi** (`b8dcfe1`): eski oqim foydalanuvchidan botdan
+  olingan tokenni panelning "Token" maydoniga qo'lda joylashtirishni talab qilardi. Endi
+  kerak emas — yangi `GET /license/status?deviceCode=...` (`srt_bot/licensing.py`:
+  `status_for_device()`, tokensiz, faqat qurilma kodi bo'yicha) + Java
+  `LicenseService.pollActivation()` / `GET /api/license/poll`. Panel faollashtirish ekrani
+  ochiq turganda har 5 sekundda so'raydi, admin botda tasdiqlagan zahoti token o'zi saqlanadi
+  va asosiy ekranga o'tadi. `index.html`dan "Token" input + "Faollashtirish" tugmasi olib
+  tashlandi. Eski `POST /api/license/activate` orqaga moslik uchun saqlab qolindi.
+- **Muhim topilma — SSH kalit va server manzili**: `shox-med-aws.pem`/`ubuntu@`/AWS endi
+  **ishlamaydi** — server 2026-08-14'da AWS'dan **dicloud** VPS'ga (`217.29.115.170`,
+  `aitilmoch.duckdns.org` shu yerga ishora qiladi) ko'chirilgan (to'liq tafsilot:
+  [[reference-aws-server-ssh]] xotira faylida). To'g'ri kalitlar: `~/.ssh/dicloud_key`
+  (root) va `~/.ssh/ci_deploy_key` (appuser, CI ishlatgani bilan bir xil). Yuqoridagi
+  eskirgan qatorni ("ubuntu@/shox-med-aws.pem orqali mumkin") shuning uchun endi **e'tiborsiz
+  qoldiring**.
+- **Muhim topilma — srt_bot (Python/bot) tomoni CI'da umuman yo'q**: `.github/workflows/
+  build-backend.yml`ning `push.paths`ida `srt_bot/**` **yo'q** — ya'ni Java backend/plugin
+  har push'da avtomatik serverga chiqadi, lekin Telegram bot + litsenziya server (`srt_bot/`)
+  kod o'zgarishlari **hech qachon** avtomatik deploy bo'lmaydi, faqat qo'lda SSH orqali.
+  Shu sababli server bugun (2026-08-17) tekshirilganda **3 kun oldingi** (`a2889b0`,
+  2026-08-14'dan beri) kodni ishlatib turgani aniqlandi — shu orada git'ga tushgan bir nechta
+  tuzatish (jumladan `/backend/version` endpoint'ining o'zi — `plugin_release.py`da butunlay
+  yo'q edi, shuning uchun bu endpoint jonli serverda **404 qaytarardi**, ya'ni backend
+  auto-update mexanizmi haqiqatda sinalmagan bo'lsa ishlamas edi) hech qachon serverga
+  yetib bormagan edi. Qo'lda tuzatildi: `git reset --hard origin/master` +
+  (sudo parol so'ragani uchun) `kill <pid>` orqali jarayonni to'xtatib, `Restart=always`
+  systemd sozlamasi orqali yangi koddan avtomatik qayta ishga tushirildi. Tasdiqlandi:
+  `/backend/version` → `1.0.32`, `/license/status?deviceCode=test` → ishlayapti.
+  **`sudo systemctl restart uzbek-ai-captions-bot.service` parolsiz emas** (faqat
+  `ravon-web-caption.service` uchun sozlangan) — kerak bo'lsa sudoers'ga qo'shish mumkin.
+
+- **Gemini API key-rotatsiya qo'shildi**: foydalanuvchi 5 ta Gemini API key berdi (bepul
+  tarif — key boshiga kunlik so'rov chegarasi bor). Yangi `srt_bot/gemini_keys.py` —
+  `gemini_transcriber.py` va `spelling_correction.py` uchun umumiy round-robin: 429/
+  RESOURCE_EXHAUSTED xatosi sezilsa, avtomatik keyingi keyga o'tadi (`config.GEMINI_API_KEYS`,
+  vergul bilan ajratilgan, `.env`da — git'ga tushmaydi). Haqiqiy so'rov bilan sinaldi:
+  `correct_words(['başqa','uzaq','bolib'])` → `['boshqa','uzoq',"bo'lib"]` to'g'ri qaytdi.
+- **Onlayn vositada (website/subtitr.html) video pleyer qayta qurildi**: brauzerning standart
+  `<video controls>`i olib tashlandi, endi 9:16 portret qutida (`.video-stage{aspect-ratio:
+  9/16}`, `object-fit:cover`) maxsus tugmalar qatori bilan — boshiga qaytarish, play/pauza
+  (binafsha, markazda), tezlik (1x→1.5x→2x→0.5x aylanadi), ko'zguda aks ettirish
+  (`scaleX(-1)`, faqat videoning o'ziga, caption-overlay'ga tegmaydi), video ichida pastda
+  vaqt yorlig'i + to'liq ekran tugmasi (butun stage'ni fullscreen qiladi, shuning uchun
+  caption preview ham fullscreen'da ko'rinadi). Brauzerda (Chrome, DOM orqali) sinaldi —
+  barcha tugmalar to'g'ri ishlaydi.
+
+### Keyingi qadam
+- `srt_bot/` (va endi ma'lum bo'ldiki `website/` ham, bir xil checkout ichida) uchun CI
+  avtomatlashtirish qo'shish tavsiya etiladi (`build-webserver-jar`dagi "Upload jar and
+  restart service" qadamiga o'xshab — push'dan keyin serverga rsync + xizmatni qayta ishga
+  tushirish), aks holda bu muammo (Python/sayt tomon eskirib qolishi) qaytadan
+  takrorlanaveradi.
+- Sinov video/audio bilan Gemini transkripsiya aniqligini (foydalanuvchi so'ragan "98%")
+  hali real solishtirib tekshirilmagan — namuna fayl kutilmoqda.
