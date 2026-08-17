@@ -73,6 +73,29 @@ jobs:
         shell: pwsh
         run: Set-Content -Path src\main\resources\backend-version.txt -Value "1.0.${{ github.run_number }}" -NoNewline -Encoding utf8
 
+      # Same reasoning as "Write backend version" above: a hand-edited version string is a step
+      # a human can forget, and forgetting it is invisible (checkForUpdate() just silently finds
+      # nothing newer -- this already happened once, see PROGRESS.md's 2026-08-14 "d4ad877"
+      # entry, where a whole session's plugin changes never reached installed panels because
+      # ExtensionBundleVersion wasn't bumped alongside them). Both the manifest's
+      # ExtensionBundleVersion/Extension Version and main.js's PLUGIN_VERSION constant must move
+      # together -- checkForUpdate() compares the server's manifest-derived version against the
+      # locally-running PLUGIN_VERSION -- so both are overwritten here from the same run number,
+      # never by hand again.
+      - name: Write plugin version
+        shell: pwsh
+        run: |
+          $version = "1.4.${{ github.run_number }}"
+
+          $manifest = Get-Content cep-extension\CSXS\manifest.xml -Raw
+          $manifest = $manifest -replace 'ExtensionBundleVersion="[^"]*"', "ExtensionBundleVersion=`"$version`""
+          $manifest = $manifest -replace '(<Extension Id="uz\.uzbekaicaptions\.panel\.main" Version=")[^"]*(")', "`${1}$version`${2}"
+          Set-Content -Path cep-extension\CSXS\manifest.xml -Value $manifest -NoNewline -Encoding utf8
+
+          $mainJs = Get-Content cep-extension\client\js\main.js -Raw
+          $mainJs = $mainJs -replace "var PLUGIN_VERSION = '[^']*';", "var PLUGIN_VERSION = '$version';"
+          Set-Content -Path cep-extension\client\js\main.js -Value $mainJs -NoNewline -Encoding utf8
+
       - name: Build jar
         run: .\mvnw.cmd -q -DskipTests package
         shell: cmd
