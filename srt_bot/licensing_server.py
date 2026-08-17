@@ -34,6 +34,14 @@ async def handle_verify(request: web.Request) -> web.Response:
     )
 
 
+async def handle_status(request: web.Request) -> web.Response:
+    """Device-code-only poll for the panel's activation screen -- see
+    licensing.status_for_device for why no token is needed here."""
+    device_code = request.query.get("deviceCode", "").strip()
+    result = licensing.status_for_device(device_code)
+    return web.json_response(result)
+
+
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
@@ -41,6 +49,7 @@ async def handle_health(request: web.Request) -> web.Response:
 def build_app() -> web.Application:
     app = web.Application(client_max_size=MAX_UPLOAD_BYTES)
     app.router.add_post("/license/verify", handle_verify)
+    app.router.add_get("/license/status", handle_status)
     app.router.add_get("/license/health", handle_health)
     transcribe_server.register(app)
     proxy_server.register(app)

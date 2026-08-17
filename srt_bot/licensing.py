@@ -166,6 +166,32 @@ def verify(device_code: str, token: str) -> VerifyResult:
     return VerifyResult(True, days_left, "ok")
 
 
+def status_for_device(device_code: str) -> dict:
+    """Looks up license state by device_code alone, no token required -- used by the panel's
+    activation-screen poll so a user never has to copy a token out of the bot and paste it back
+    into the panel by hand. Safe to return the token itself here: it only ever verifies when
+    paired with this exact device_code (see verify()'s device_mismatch check), so handing it back
+    to whoever already holds/generated that device_code doesn't let anyone else activate with it.
+    """
+    if not device_code:
+        return {"valid": False, "reason": "missing_device_code", "daysLeft": 0, "token": None}
+    with closing(_connect()) as conn:
+        row = conn.execute(
+            "SELECT token, expires_at, revoked FROM licenses WHERE device_code = ?",
+            (device_code,),
+        ).fetchone()
+    if row is None:
+        pending = get_pending_request(device_code)
+        return {"valid": False, "reason": "pending" if pending else "not_found", "daysLeft": 0, "token": None}
+    token, expires_at, revoked = row
+    if revoked:
+        return {"valid": False, "reason": "revoked", "daysLeft": 0, "token": None}
+    days_left = (expires_at - time.time()) / 86400
+    if days_left <= 0:
+        return {"valid": False, "reason": "expired", "daysLeft": 0, "token": None}
+    return {"valid": True, "reason": "ok", "daysLeft": round(days_left, 2), "token": token}
+
+
 def has_free_quota_today(telegram_user_id: int) -> bool:
     """Read-only check, used to reject early (before downloading/processing anything)
     if today's free bot conversion is already used. Does not record anything — call

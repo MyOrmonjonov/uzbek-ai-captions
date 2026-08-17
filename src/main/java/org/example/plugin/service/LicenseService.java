@@ -2,6 +2,7 @@ package org.example.plugin.service;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -100,6 +101,63 @@ public class LicenseService {
             }
             return new Status(false, 0, "network_error");
         }
+    }
+
+    /**
+     * Polls the license server by device code alone (no token) -- what the panel's activation
+     * screen calls on a timer instead of making the user copy a token out of the bot and paste
+     * it back in. Saves the token locally the moment the server reports one, exactly like
+     * activate() does, so every subsequent checkValid() call works unchanged.
+     */
+    public Status pollActivation() {
+        try {
+            return callStatusWithRetry(identityService.getDeviceCode());
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return new Status(false, 0, "network_error");
+        }
+    }
+
+    private Status callStatusWithRetry(String deviceCode) throws IOException, InterruptedException {
+        IOException lastError = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return callStatus(deviceCode);
+            } catch (IOException e) {
+                lastError = e;
+                if (attempt < 3) {
+                    Thread.sleep(500L * attempt);
+                }
+            }
+        }
+        throw lastError;
+    }
+
+    private Status callStatus(String deviceCode) throws IOException, InterruptedException {
+        String verifyUrl = properties.getLicense().getServerUrl();
+        String base = verifyUrl.endsWith("/verify") ? verifyUrl.substring(0, verifyUrl.length() - "/verify".length()) : verifyUrl;
+        String statusUrl = base + "/status?deviceCode=" + URLEncoder.encode(deviceCode, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(statusUrl))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        JsonNode root = objectMapper.readTree(response.body());
+        boolean valid = root.path("valid").asBoolean(false);
+        double daysLeft = root.path("daysLeft").asDouble(0);
+        String reason = root.path("reason").asText("unknown");
+        String token = root.path("token").asText(null);
+
+        Status result = new Status(valid, daysLeft, reason);
+        if (valid && token != null && !token.isBlank()) {
+            identityService.saveToken(token);
+            cached = new CachedStatus(result, System.currentTimeMillis());
+        }
+        return result;
     }
 
     /**

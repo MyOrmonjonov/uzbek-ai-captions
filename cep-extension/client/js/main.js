@@ -172,8 +172,6 @@
         deviceCodeText: document.getElementById('device-code-text'),
         copyCodeBtn: document.getElementById('copy-code-btn'),
         openBotBtn: document.getElementById('open-bot-btn'),
-        tokenInput: document.getElementById('token-input'),
-        activateBtn: document.getElementById('activate-btn'),
         activationStatus: document.getElementById('activation-status'),
         activationStatusText: document.getElementById('activation-status-text'),
         updateBanner: document.getElementById('update-banner'),
@@ -886,13 +884,12 @@
 
     var REASON_TEXT = {
         not_activated: "Hali faollashtirilmagan. Quyidagi kodni botga yuboring.",
-        expired: "Obuna muddati tugagan. Botdan yangi token oling.",
+        pending: "To'lov tekshirilmoqda... Admin tasdiqlagach avtomatik faollashadi.",
+        expired: "Obuna muddati tugagan. Botga qayta murojaat qiling.",
         revoked: 'Litsenziya bekor qilingan. Admin bilan bog\'laning.',
         network_error: "Litsenziya serveriga ulanib bo'lmadi. Internetni tekshiring.",
         backend_unreachable: "Backend serverga ulanib bo'lmadi. run-server.bat ishga tushirilganini tekshiring.",
-        device_mismatch: "Token noto'g'ri yoki boshqa qurilmaga tegishli.",
-        not_found: "Token topilmadi. Qaytadan tekshiring.",
-        missing_token: 'Tokenni kiriting.',
+        not_found: "Hali so'rov topilmadi. Kodni botga yuborganingizni tekshiring.",
     };
 
     function setActivationStatus(text, kind) {
@@ -907,15 +904,45 @@
         els.deviceCodeText.textContent = deviceCode || '...';
         var isErrorReason = reason === 'network_error' || reason === 'backend_unreachable';
         setActivationStatus(REASON_TEXT[reason] || 'Faollashtirish kerak.', isErrorReason ? 'error' : '');
+        startActivationPolling();
     }
 
     function showMainContent(daysLeft) {
+        stopActivationPolling();
         els.activationScreen.hidden = true;
         els.mainContent.hidden = false;
         els.licenseBadge.hidden = false;
         var days = Math.max(0, Math.ceil(daysLeft));
         els.licenseBadge.textContent = days + ' kun qoldi';
         els.licenseBadge.className = 'license-badge' + (days <= 3 ? ' warn' : '');
+    }
+
+    // No token-paste step anymore: once the device code is sent to the bot and the admin
+    // approves the payment, the backend already has a token bound to that device code (see
+    // LicenseService.pollActivation()/licensing.status_for_device on the server) -- this just
+    // has to notice and save it. Polls only while the activation screen is actually showing.
+    var activationPollTimer = null;
+    function startActivationPolling() {
+        if (activationPollTimer) return;
+        activationPollTimer = setInterval(function () {
+            fetch(API_BASE + '/api/license/poll')
+                .then(function (res) { return res.json(); })
+                .then(function (body) {
+                    if (body.valid) {
+                        showMainContent(body.daysLeft);
+                    } else {
+                        var isErrorReason = body.reason === 'network_error' || body.reason === 'backend_unreachable';
+                        setActivationStatus(REASON_TEXT[body.reason] || 'Faollashtirish kutilmoqda...', isErrorReason ? 'error' : 'busy');
+                    }
+                })
+                .catch(function () { /* transient -- next tick retries */ });
+        }, 5000);
+    }
+    function stopActivationPolling() {
+        if (activationPollTimer) {
+            clearInterval(activationPollTimer);
+            activationPollTimer = null;
+        }
     }
 
     function refreshLicenseStatus() {
@@ -988,40 +1015,6 @@
         }
         copyToClipboard(code);
         csInterface.openURLInDefaultBrowser('https://t.me/ravoncaptions_bot');
-    });
-
-    els.activateBtn.addEventListener('click', function () {
-        var token = els.tokenInput.value.trim();
-        if (!token) {
-            setActivationStatus('Tokenni kiriting.', 'error');
-            return;
-        }
-        els.activateBtn.disabled = true;
-        els.activateBtn.classList.add('busy');
-        setActivationStatus('Tekshirilmoqda...', 'busy');
-
-        fetch(API_BASE + '/api/license/activate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: token }),
-        })
-        .then(function (res) {
-            return res.json();
-        })
-        .then(function (body) {
-            if (body.valid) {
-                showMainContent(body.daysLeft);
-            } else {
-                setActivationStatus(REASON_TEXT[body.reason] || "Token noto'g'ri.", 'error');
-            }
-        })
-        .catch(function () {
-            setActivationStatus("Serverga ulanib bo'lmadi.", 'error');
-        })
-        .finally(function () {
-            els.activateBtn.disabled = false;
-            els.activateBtn.classList.remove('busy');
-        });
     });
 
     function selectKineticCard(card, name) {

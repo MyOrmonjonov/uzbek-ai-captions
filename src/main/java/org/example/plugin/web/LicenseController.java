@@ -28,4 +28,12 @@ public class LicenseController {
         LicenseService.Status status = licenseService.activate(request.token());
         return new LicenseStatusResponse(licenseService.deviceCode(), status.valid(), status.daysLeft(), status.reason());
     }
+
+    /** Polled by the panel's activation screen on a timer -- no token in the request, since the
+     * device code alone is enough for the server to say "yes, this got approved" once it has. */
+    @GetMapping("/api/license/poll")
+    public LicenseStatusResponse poll() {
+        LicenseService.Status status = licenseService.pollActivation();
+        return new LicenseStatusResponse(licenseService.deviceCode(), status.valid(), status.daysLeft(), status.reason());
+    }
 }
