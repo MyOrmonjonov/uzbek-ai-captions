@@ -203,14 +203,21 @@
   .word-chip.active{background:var(--accent);color:#140f33;}
   .word-chip[contenteditable="true"]{background:rgba(255,255,255,0.08);outline:1px solid var(--accent-dim);}
 
-  .style-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-height:340px;overflow-y:auto;padding-right:4px;}
+  .style-gallery{max-height:400px;overflow-y:auto;padding-right:4px;}
+  .style-category{margin-bottom:18px;}
+  .style-category:last-child{margin-bottom:0;}
+  .style-category-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;font-weight:700;}
+  .style-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
   .style-card{
     background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:10px;
-    padding:12px 8px;text-align:center;cursor:pointer;transition:transform .2s var(--ease),border-color .2s;
+    padding:8px;text-align:center;cursor:pointer;transition:transform .2s var(--ease),border-color .2s;
   }
   .style-card:hover{transform:translateY(-2px);border-color:var(--glass-hover-border);}
   .style-card.picked{border-color:var(--accent);background:rgba(124,111,239,0.1);}
-  .style-preview{font-size:13px;line-height:1.3;margin-bottom:6px;min-height:32px;display:flex;align-items:center;justify-content:center;}
+  .style-preview-video{
+    width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:7px;
+    margin-bottom:6px;background:#000;display:block;
+  }
   .style-name{font-size:11px;color:var(--text-dim);}
 
   /* ---- display settings ---- */
@@ -363,7 +370,7 @@
         </div>
         <div class="editor-panel">
           <h4>Uslub</h4>
-          <div class="style-grid" id="styleGrid"></div>
+          <div class="style-gallery" id="styleGrid"></div>
         </div>
       </div>
       <div class="settings-grid">
@@ -983,23 +990,59 @@
       });
   }
 
+  // Hand-picked grouping (KaraokeStyleDto carries no category field of its own) -- purely a
+  // gallery-browsing aid, doesn't affect rendering. Keys must match KaraokeStylePresets.java.
+  var STYLE_CATEGORIES = {
+    apple: 'Klassik', karaoke_classic: 'Klassik', mrbeast: 'Klassik', youtube_red: 'Klassik', spotify: 'Klassik',
+    tiktok_bold: "Rangma-rang", instagram: "Rangma-rang", electric_blue: "Rangma-rang",
+    royal_purple: "Rangma-rang", neon_cyan: "Rangma-rang", grape: "Rangma-rang",
+    sunset: 'Iliq ranglar', gold_luxury: 'Iliq ranglar', rose_gold: 'Iliq ranglar',
+    sunshine: 'Iliq ranglar', coral: 'Iliq ranglar', cherry: 'Iliq ranglar',
+    mint: 'Salqin ranglar', lime: 'Salqin ranglar', ocean: 'Salqin ranglar', midnight: 'Salqin ranglar'
+  };
+  var STYLE_CATEGORY_ORDER = ['Klassik', "Rangma-rang", 'Iliq ranglar', 'Salqin ranglar'];
+
   function renderStyles(styles) {
-    var grid = document.getElementById('styleGrid');
-    grid.innerHTML = '';
+    var wrap = document.getElementById('styleGrid');
+    wrap.innerHTML = '';
+
+    var byCategory = {};
     styles.forEach(function (s) {
-      var card = document.createElement('div');
-      card.className = 'style-card';
-      card.innerHTML =
-        '<div class="style-preview" style="font-weight:' + (s.bold ? '800' : '600') +
-        ';font-family:' + s.fontName + ',sans-serif;color:' + s.primaryColorHex + '">' +
-        'Salom <span style="color:' + s.highlightColorHex + '">dunyo</span></div>' +
-        '<div class="style-name">' + s.displayName + '</div>';
-      card.addEventListener('click', function () {
-        Array.prototype.forEach.call(grid.children, function (c) { c.classList.remove('picked'); });
-        card.classList.add('picked');
-        selectStyle(s);
+      var cat = STYLE_CATEGORIES[s.key] || 'Boshqa';
+      (byCategory[cat] = byCategory[cat] || []).push(s);
+    });
+    var orderedCategories = STYLE_CATEGORY_ORDER.filter(function (c) { return byCategory[c]; })
+      .concat(Object.keys(byCategory).filter(function (c) { return STYLE_CATEGORY_ORDER.indexOf(c) === -1; }));
+
+    orderedCategories.forEach(function (cat) {
+      var section = document.createElement('div');
+      section.className = 'style-category';
+      var label = document.createElement('div');
+      label.className = 'style-category-label';
+      label.textContent = cat;
+      section.appendChild(label);
+
+      var grid = document.createElement('div');
+      grid.className = 'style-grid';
+      byCategory[cat].forEach(function (s) {
+        var card = document.createElement('div');
+        card.className = 'style-card';
+        // Same short looping preview clip (real ffmpeg/ASS pipeline, rendered once at build
+        // time against a fixed sample phrase) the CEP panel's own style gallery already uses --
+        // beats guessing what "TikTok Bold" looks like from a static colored-text label.
+        card.innerHTML =
+          '<video class="style-preview-video" src="assets/karaoke-previews/' + s.key + '.mp4" ' +
+          'muted loop autoplay playsinline></video>' +
+          '<div class="style-name">' + s.displayName + '</div>';
+        card.addEventListener('click', function () {
+          document.querySelectorAll('#styleGrid .style-card').forEach(function (c) { c.classList.remove('picked'); });
+          card.classList.add('picked');
+          selectStyle(s);
+        });
+        grid.appendChild(card);
       });
-      grid.appendChild(card);
+      section.appendChild(grid);
+      wrap.appendChild(section);
     });
   }
 
