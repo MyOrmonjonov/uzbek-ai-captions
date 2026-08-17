@@ -21,4 +21,23 @@ public final class AssColorUtil {
         String rr = hex.substring(6, 8);
         return "#" + rr + gg + bb;
     }
+
+    /**
+     * Converts "#RRGGBB" to "&amp;H00BBGGRR" (opaque). Returns null on anything that isn't
+     * exactly 6 hex digits -- callers treat null as "keep the style preset's own color" rather
+     * than risking a malformed value reaching the ASS script libass parses.
+     */
+    public static String fromCssHex(String cssHex) {
+        if (cssHex == null) {
+            return null;
+        }
+        String hex = cssHex.startsWith("#") ? cssHex.substring(1) : cssHex;
+        if (!hex.matches("[0-9A-Fa-f]{6}")) {
+            return null;
+        }
+        String rr = hex.substring(0, 2);
+        String gg = hex.substring(2, 4);
+        String bb = hex.substring(4, 6);
+        return ("&H00" + bb + gg + rr).toUpperCase();
+    }
 }

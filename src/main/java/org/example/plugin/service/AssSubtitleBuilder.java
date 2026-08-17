@@ -65,6 +65,11 @@ final class AssSubtitleBuilder {
         String groupingMode = (options != null && options.groupingMode() != null) ? options.groupingMode() : "custom";
         String fontName = (options != null && options.fontOverride() != null) ? options.fontOverride() : style.fontName();
 
+        String baseColorAss = resolveColorOverride(options != null ? options.textColorHex() : null, style.baseColorAss());
+        String highlightColorAss = resolveColorOverride(options != null ? options.accentColorHex() : null, style.highlightColorAss());
+        boolean outlineEnabled = options == null || options.outline() == null || options.outline();
+        int outlineWidth = outlineEnabled ? 5 : 0;
+
         // Font sizes on KaraokeStylePresets are tuned against a 1920-tall reference frame so a
         // preset reads the same size regardless of the actual input resolution.
         int fontSize = Math.max(10, Math.round(style.fontSize() * (playResY / 1920f) * (textSizePercent / 100f)));
@@ -91,10 +96,10 @@ final class AssSubtitleBuilder {
                         + "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
                         + "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
                 .append("Style: Karaoke,").append(fontName).append(',').append(fontSize).append(',')
-                .append(style.baseColorAss()).append(',').append(style.highlightColorAss()).append(',')
+                .append(baseColorAss).append(',').append(highlightColorAss).append(',')
                 .append(style.outlineColorAss()).append(",&H00000000,")
                 .append(style.bold() ? "-1" : "0")
-                .append(",0,0,0,100,100,0,0,1,5,0,").append(alignment).append(",60,60,")
+                .append(",0,0,0,100,100,0,0,1,").append(outlineWidth).append(",0,").append(alignment).append(",60,60,")
                 .append(marginV).append(",1\n\n")
                 .append("[Events]\n")
                 .append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
@@ -102,7 +107,12 @@ final class AssSubtitleBuilder {
         for (List<Word> line : groupWords(words, groupingMode, wordsOnScreen)) {
             switch (style.template()) {
                 case KARAOKE_FILL -> appendKaraokeFillLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, style);
-                case WORD_POP -> appendWordPopLines(sb, line, style, wordsPerLine, uppercase, cyrillic, autoEmphasis);
+                case WORD_POP -> appendWordPopLines(sb, line, baseColorAss, highlightColorAss, wordsPerLine, uppercase, cyrillic, autoEmphasis);
+                case SLIDE_IN -> appendSlideInLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis,
+                        baseColorAss, highlightColorAss, alignment, playResX, playResY, marginV);
+                case TYPEWRITER -> appendTypewriterLine(sb, line, uppercase, cyrillic);
+                case COLOR_CYCLE -> appendColorCycleLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss);
+                case SHAKE -> appendShakeLine(sb, line, wordsPerLine, uppercase, cyrillic, autoEmphasis, baseColorAss, highlightColorAss);
             }
         }
         return sb.toString();
@@ -147,6 +157,11 @@ final class AssSubtitleBuilder {
         return groups;
     }
 
+    private static String resolveColorOverride(String cssHex, String styleDefaultAss) {
+        String converted = AssColorUtil.fromCssHex(cssHex);
+        return converted != null ? converted : styleDefaultAss;
+    }
+
     private static boolean isEmphasized(String text) {
         String normalized = TRAILING_PUNCT.matcher(text.strip().toLowerCase()).replaceAll("");
         return normalized.length() >= 4 && !STOP_WORDS.contains(normalized);
@@ -180,8 +195,8 @@ final class AssSubtitleBuilder {
         appendDialogue(sb, start, end, text.toString().stripTrailing());
     }
 
-    private static void appendWordPopLines(StringBuilder sb, List<Word> line, KaraokeStyle style, int wordsPerLine,
-                                            boolean uppercase, boolean cyrillic, boolean autoEmphasis) {
+    private static void appendWordPopLines(StringBuilder sb, List<Word> line, String baseColorAss, String highlightColorAss,
+                                            int wordsPerLine, boolean uppercase, boolean cyrillic, boolean autoEmphasis) {
         for (int i = 0; i < line.size(); i++) {
             double start = line.get(i).start();
             double end = (i < line.size() - 1) ? line.get(i + 1).start() : line.get(i).end();
@@ -197,13 +212,13 @@ final class AssSubtitleBuilder {
                     // event's own Start (0ms) -- the reason this needs one Dialogue event per
                     // word rather than a single \k line: \t timing anchors to the event's Start,
                     // not to each karaoke syllable within it.
-                    text.append("{\\c").append(style.highlightColorAss())
+                    text.append("{\\c").append(highlightColorAss)
                             .append("\\t(0,120,\\fscx115\\fscy115)\\t(120,240,\\fscx100\\fscy100)}")
                             .append(word).append(' ');
                 } else if (emphasized) {
-                    text.append("{\\c").append(style.highlightColorAss()).append("\\b1}").append(word).append("{\\b0}").append(' ');
+                    text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0}").append(' ');
                 } else {
-                    text.append("{\\c").append(style.baseColorAss()).append('}').append(word).append(' ');
+                    text.append("{\\c").append(baseColorAss).append('}').append(word).append(' ');
                 }
                 if (wordsPerLine > 0 && (j + 1) % wordsPerLine == 0 && j < line.size() - 1) {
                     text.append("\\N");
@@ -211,6 +226,131 @@ final class AssSubtitleBuilder {
             }
             appendDialogue(sb, start, end, text.toString().stripTrailing());
         }
+    }
+
+    private static void appendSlideInLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                           boolean uppercase, boolean cyrillic, boolean autoEmphasis,
+                                           String baseColorAss, String highlightColorAss,
+                                           int alignment, int playResX, int playResY, int marginV) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+
+        // \move requires an explicit \an anchor -- must match the Style's own Alignment so the
+        // final (post-slide) position lands exactly where libass's automatic layout would have
+        // put the text, not somewhere else on screen.
+        int x = playResX / 2;
+        int yFinal = switch (alignment) {
+            case 8 -> marginV;
+            case 5 -> playResY / 2;
+            default -> playResY - marginV;
+        };
+        int slideDistance = Math.round(playResY * 0.04f);
+        int yStart = alignment == 8 ? yFinal - slideDistance : yFinal + slideDistance;
+
+        StringBuilder text = new StringBuilder("{\\an").append(alignment)
+                .append("\\move(").append(x).append(',').append(yStart).append(',').append(x).append(',').append(yFinal).append(",0,220)")
+                .append("\\alpha&HFF&\\t(0,220,\\alpha&H00&)}");
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            if (emphasized) {
+                text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0\\c").append(baseColorAss).append('}').append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
+    }
+
+    private static void appendTypewriterLine(StringBuilder sb, List<Word> line, boolean uppercase, boolean cyrillic) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+        double duration = Math.max(end - start, MIN_CENTISECONDS / 100.0);
+
+        StringBuilder full = new StringBuilder();
+        for (int i = 0; i < line.size(); i++) {
+            if (i > 0) {
+                full.append(' ');
+            }
+            full.append(display(line.get(i).text(), uppercase, cyrillic));
+        }
+        String fullText = full.toString();
+        int totalChars = fullText.length();
+        if (totalChars == 0) {
+            return;
+        }
+
+        for (int i = 1; i <= totalChars; i++) {
+            double stepStart = start + duration * (i - 1) / totalChars;
+            double stepEnd = (i == totalChars) ? end : start + duration * i / totalChars;
+            appendDialogue(sb, stepStart, stepEnd, escape(fullText.substring(0, i)));
+        }
+    }
+
+    // Arbitrary vivid cycle (ASS &HAABBGGRR): cyan, magenta, yellow, orange.
+    private static final String[] COLOR_CYCLE_PALETTE = {"&H00FFFF00", "&H00FF00FF", "&H0000FFFF", "&H0000A5FF"};
+
+    private static void appendColorCycleLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                              boolean uppercase, boolean cyrillic, boolean autoEmphasis, String baseColorAss) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+        double durationMs = Math.max(end - start, MIN_CENTISECONDS / 100.0) * 1000;
+        int steps = COLOR_CYCLE_PALETTE.length;
+
+        StringBuilder text = new StringBuilder("{\\c").append(baseColorAss);
+        for (int i = 0; i < steps; i++) {
+            long t1 = Math.round(durationMs * i / steps);
+            long t2 = Math.round(durationMs * (i + 1) / steps);
+            text.append("\\t(").append(t1).append(',').append(t2).append(",\\c").append(COLOR_CYCLE_PALETTE[i]).append(')');
+        }
+        text.append('}');
+
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            if (emphasized) {
+                text.append("{\\b1}").append(word).append("{\\b0}").append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
+    }
+
+    private static void appendShakeLine(StringBuilder sb, List<Word> line, int wordsPerLine,
+                                         boolean uppercase, boolean cyrillic, boolean autoEmphasis,
+                                         String baseColorAss, String highlightColorAss) {
+        double start = line.get(0).start();
+        double end = line.get(line.size() - 1).end();
+
+        // A quick oscillating \frz wiggle on entrance (settles to 0 by 320ms), not a continuous
+        // shake for the whole line -- constant shaking would fight with readability. No \org
+        // override: libass's default rotation pivot (the text's own bounding-box center) is
+        // fine for a brief wiggle like this.
+        StringBuilder text = new StringBuilder(
+                "{\\frz0\\t(0,60,\\frz-6)\\t(60,120,\\frz6)\\t(120,180,\\frz-4)\\t(180,240,\\frz4)\\t(240,320,\\frz0)}");
+        for (int i = 0; i < line.size(); i++) {
+            Word w = line.get(i);
+            String word = escape(display(w.text(), uppercase, cyrillic));
+            boolean emphasized = autoEmphasis && isEmphasized(w.text());
+            if (emphasized) {
+                text.append("{\\c").append(highlightColorAss).append("\\b1}").append(word).append("{\\b0\\c").append(baseColorAss).append('}').append(' ');
+            } else {
+                text.append(word).append(' ');
+            }
+            if (wordsPerLine > 0 && (i + 1) % wordsPerLine == 0 && i < line.size() - 1) {
+                text.append("\\N");
+            }
+        }
+        appendDialogue(sb, start, end, text.toString().stripTrailing());
     }
 
     private static void appendDialogue(StringBuilder sb, double start, double end, String text) {

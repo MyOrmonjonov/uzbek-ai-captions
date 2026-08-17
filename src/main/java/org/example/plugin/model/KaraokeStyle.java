@@ -13,6 +13,15 @@ package org.example.plugin.model;
  *   every repaint identically), the active word scaling up briefly via \t while the rest sit in
  *   the base color — the bold "TikTok captions" look. \t timing anchors to each Dialogue event's
  *   own Start, which is why this needs one event per word rather than one \k-tagged line.
+ * - SLIDE_IN: one Dialogue line per chunk, an explicit \move (from just off its final position)
+ *   plus an alpha fade-in over the first ~220ms, then holds still.
+ * - TYPEWRITER: one Dialogue event per revealed character, each showing one more character of
+ *   the chunk's text than the last — the classic terminal-typing look. Ignores wordsPerLine
+ *   wrapping (chunks using this template are expected to stay short).
+ * - COLOR_CYCLE: one Dialogue line per chunk, PrimaryColour chained through a small fixed
+ *   palette via \t for the chunk's whole duration.
+ * - SHAKE: one Dialogue line per chunk, a quick oscillating \frz wiggle on entrance (settles by
+ *   320ms) rather than a continuous shake, which would fight with readability.
  */
 public record KaraokeStyle(
         String key,
@@ -28,5 +37,9 @@ public record KaraokeStyle(
     public enum AnimationTemplate {
         KARAOKE_FILL,
         WORD_POP,
+        SLIDE_IN,
+        TYPEWRITER,
+        COLOR_CYCLE,
+        SHAKE,
     }
 }

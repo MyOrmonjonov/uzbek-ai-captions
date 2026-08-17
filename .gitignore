@@ -45,6 +45,7 @@ src/main/resources/backend-version.txt
 
 ### Scratch / temp ###
 scratchpad/
+preview-out/
 
 ### Claude Code local settings ###
 .claude/settings.local.json

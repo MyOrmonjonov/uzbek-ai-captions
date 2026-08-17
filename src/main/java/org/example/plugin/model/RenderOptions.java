@@ -11,6 +11,14 @@ package org.example.plugin.model;
  * ignore wordsOnScreen and group by punctuation instead -- see AssSubtitleBuilder.groupWords().
  *
  * position: "top" | "middle" | "bottom".
+ *
+ * textColorHex/accentColorHex are CSS "#RRGGBB" (matching what an &lt;input type="color"&gt;
+ * produces), converted to ASS's &amp;HAABBGGRR via AssColorUtil.fromCssHex; null means "use the
+ * style preset's own color" (AssColorUtil rejects malformed hex the same way, since this comes
+ * straight off the wire). outline is nullable rather than primitive so "not sent" (null) means
+ * "on", matching the style presets' original always-on 5px outline -- a primitive default of
+ * false would have silently stripped every preset's outline the moment the desktop CEP path
+ * (which never sends RenderOptions at all) was compared against a web request that omits it.
  */
 public record RenderOptions(
         Integer wordsOnScreen,
@@ -21,5 +29,8 @@ public record RenderOptions(
         String fontOverride,
         String groupingMode,
         boolean autoEmphasis,
-        boolean cyrillic) {
+        boolean cyrillic,
+        String textColorHex,
+        String accentColorHex,
+        Boolean outline) {
 }
