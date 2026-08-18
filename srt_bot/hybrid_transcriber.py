@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import gemini_transcriber
+import spelling_correction
 import transcriber
 from transcriber import Segment, TranscriptionResult, Word
 
@@ -120,7 +121,11 @@ def _rebuild_segments(gemini_segments: list[Segment], aligned_words: list[Word])
         seg_words = aligned_words[cursor:cursor + count]
         cursor += count
         if seg_words:
-            segments.append(Segment(text=seg.text, start=seg_words[0].start, end=seg_words[-1].end))
+            # Rebuilt from aligned_words (spelling-corrected in transcribe() below), not the
+            # original seg.text -- otherwise a segment's displayed text would silently keep
+            # showing the pre-correction spelling regardless of what the words got corrected to.
+            text = " ".join(w.text for w in seg_words)
+            segments.append(Segment(text=text, start=seg_words[0].start, end=seg_words[-1].end))
         else:
             segments.append(seg)
     return segments
@@ -142,6 +147,19 @@ def transcribe(audio_path: Path) -> TranscriptionResult:
                 "Gemini transcription failed, falling back to Whisper-only result", exc_info=True)
             return whisper_result
 
-    aligned_words = _align_words(whisper_result.words, gemini_result.words)
+    # gemini_words' TEXT (not whisper_words') is what ends up in the final result below --
+    # _align_words keeps whichever word came from Gemini, only borrowing Whisper's timestamp.
+    # Gemini's own direct transcription can leak the same Turkish-style Uzbek spelling Whisper
+    # does (see spelling_correction.py's module docstring for examples) -- transcriber.py's
+    # Whisper path already runs every word through this same correction pass, but that pass had
+    # no effect on the actual displayed text here, since Whisper's corrected words are discarded
+    # in favor of Gemini's uncorrected ones. Correcting Gemini's words directly closes that gap.
+    corrected_texts = spelling_correction.correct_words([w.text for w in gemini_result.words])
+    gemini_words = [
+        Word(text=t, start=w.start, end=w.end)
+        for t, w in zip(corrected_texts, gemini_result.words)
+    ]
+
+    aligned_words = _align_words(whisper_result.words, gemini_words)
     segments = _rebuild_segments(gemini_result.segments, aligned_words)
     return TranscriptionResult(words=aligned_words, segments=segments)

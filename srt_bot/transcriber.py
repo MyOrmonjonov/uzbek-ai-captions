@@ -5,7 +5,6 @@ from pathlib import Path
 from faster_whisper import WhisperModel
 
 import config
-import spelling_correction
 
 _model: WhisperModel | None = None
 
@@ -87,13 +86,6 @@ def transcribe(audio_path: Path) -> TranscriptionResult:
                 seg_words.append(Word(text=_cyrillic_to_latin_uz(w.word.strip()), start=w.start, end=w.end))
         raw_segments.append((seg, seg_words))
         words.extend(seg_words)
-
-    # Whisper's timestamps are accurate but its Uzbek spelling leaks Turkish orthography
-    # (low-resource language) — Gemini fixes the spelling word-for-word without touching
-    # start/end times, in a single batched call for the whole transcript.
-    corrected_texts = spelling_correction.correct_words([w.text for w in words])
-    for w, corrected in zip(words, corrected_texts):
-        w.text = corrected
 
     segments: list[Segment] = []
     for seg, seg_words in raw_segments:
