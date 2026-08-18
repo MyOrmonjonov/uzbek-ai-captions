@@ -1008,6 +1008,10 @@ input[type="range"]::-moz-range-thumb {
     width: 100%;
     aspect-ratio: 16 / 9;
     object-fit: cover;
+    /* karaoke-previews/*.mp4 are 720x1280 (9:16) with sample text near the bottom of the frame
+       -- object-position defaults to center, which crops out everything except the vertical
+       middle of a 9:16 source squeezed into this 16:9 card, i.e. exactly where the text isn't. */
+    object-position: center bottom;
     display: block;
     background: #1a1a1a;
 }

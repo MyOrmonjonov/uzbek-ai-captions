@@ -215,7 +215,11 @@
   .style-card:hover{transform:translateY(-2px);border-color:var(--glass-hover-border);}
   .style-card.picked{border-color:var(--accent);background:rgba(124,111,239,0.1);}
   .style-preview-video{
-    width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:7px;
+    /* Source clips are 720x1280 (9:16, matching the real export) with sample text sitting near
+       the bottom of the frame -- object-position defaults to center, which for a 9:16 source
+       cropped into this 16:9 card crops out everything except the vertical middle, i.e. exactly
+       where the text ISN'T. Anchoring the crop to the bottom keeps the text in frame. */
+    width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center bottom;border-radius:7px;
     margin-bottom:6px;background:#000;display:block;
   }
   .style-name{font-size:11px;color:var(--text-dim);}
