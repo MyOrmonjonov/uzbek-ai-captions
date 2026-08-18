@@ -467,6 +467,15 @@
           </div>
         </div>
       </div>
+      <div class="setting-row">
+        <div class="setting-label">Sifat</div>
+        <div class="mode-btn-group" id="resolutionButtons">
+          <button type="button" class="mode-btn active" data-resolution="">Manba (original)</button>
+          <button type="button" class="mode-btn" data-resolution="720">720p</button>
+          <button type="button" class="mode-btn" data-resolution="1080">1080p</button>
+          <button type="button" class="mode-btn" data-resolution="2160">4K</button>
+        </div>
+      </div>
       <div class="error-box" id="editorError" style="display:none;"></div>
       <button class="btn btn-accent btn-block download-render-btn" id="renderBtn" type="button" disabled>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
@@ -540,7 +549,7 @@
       groupingMode: 'qisqa', wordsOnScreen: 3, wordsPerLine: 3, textSizePercent: 100,
       position: 'middle', uppercase: false, fontOverride: null,
       autoEmphasis: false, cyrillic: false,
-      textColorHex: null, accentColorHex: null, outline: true
+      textColorHex: null, accentColorHex: null, outline: true, targetResolution: null
     };
   }
 
@@ -646,8 +655,43 @@
     box.style.display = 'block';
   }
 
+  // ---- Resilience against a server restart mid-session ----
+  // The server's uploadId -> file mapping (WebUploadStore) is purely in-memory, so a deploy/
+  // restart between upload and a later step (transcribe, or picking a style and rendering)
+  // invalidates it even though the video itself is still sitting right here in the browser
+  // (state.file, kept around for exactly this and for the session-persistence feature). Rather
+  // than dead-ending on "video not found -- re-upload" and making the visitor start over by
+  // hand, silently re-upload the same file and retry once.
+  function isStaleUploadError(message) {
+    return typeof message === 'string' && message.indexOf('eskirgan') !== -1;
+  }
+
+  function reuploadCurrentFile() {
+    return new Promise(function (resolve, reject) {
+      if (!state.file) { reject(new Error('no file to re-upload')); return; }
+      var form = new FormData();
+      form.append('video', state.file);
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', WEB_API_BASE + '/web/upload');
+      var headers = authHeaders();
+      Object.keys(headers).forEach(function (k) { xhr.setRequestHeader(k, headers[k]); });
+      xhr.onload = function () {
+        var body = {};
+        try { body = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && body.uploadId) {
+          state.uploadId = body.uploadId;
+          resolve(body.uploadId);
+        } else {
+          reject(new Error(body.error || 'reupload failed'));
+        }
+      };
+      xhr.onerror = function () { reject(new Error('network error')); };
+      xhr.send(form);
+    });
+  }
+
   // ---- 2. Transcription ----
-  function startTranscribe() {
+  function startTranscribe(isRetry) {
     showPanel('transcribing');
     fetch(WEB_API_BASE + '/web/transcribe', {
       method: 'POST',
@@ -658,6 +702,9 @@
       .then(function (res) {
         if (res.status === 200 && res.body.jobId) {
           pollTranscribeJob(res.body.jobId);
+        } else if (!isRetry && isStaleUploadError(res.body.error)) {
+          reuploadCurrentFile().then(function () { startTranscribe(true); })
+            .catch(function () { showUploadError(res.body.error || 'Transkripsiya boshlanmadi.'); });
         } else {
           showUploadError(res.body.error || 'Transkripsiya boshlanmadi.');
         }
@@ -1151,6 +1198,9 @@
     document.getElementById('textColorPicker').value = '#FFFFFF';
     document.getElementById('accentColorPicker').value = '#FFE600';
     document.getElementById('outlineToggle').checked = true;
+    document.querySelectorAll('#resolutionButtons .mode-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.resolution === '');
+    });
   }
 
   document.querySelectorAll('#groupingModeButtons .mode-btn').forEach(function (btn) {
@@ -1183,6 +1233,17 @@
       state.renderOptions.position = btn.dataset.position;
       applyOverlayPosition(btn.dataset.position);
       updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    });
+  });
+
+  // Output resolution -- purely an export setting (not a caption-style one), so it only affects
+  // renderOptions.targetResolution sent with the final /web/caption request, nothing in the
+  // live browser preview.
+  document.querySelectorAll('#resolutionButtons .mode-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#resolutionButtons .mode-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.renderOptions.targetResolution = btn.dataset.resolution || null;
     });
   });
 
@@ -1245,7 +1306,7 @@
 
   document.getElementById('renderBtn').addEventListener('click', startRender);
 
-  function startRender() {
+  function startRender(isRetry) {
     if (!state.styleKey) return;
     document.getElementById('editorError').style.display = 'none';
     showPanel('progress');
@@ -1265,6 +1326,13 @@
         if (res.status === 200 && res.body.jobId) {
           state.jobId = res.body.jobId;
           pollJob();
+        } else if (!isRetry && isStaleUploadError(res.body.error)) {
+          reuploadCurrentFile().then(function () { startRender(true); }).catch(function () {
+            showPanel('editor');
+            var box = document.getElementById('editorError');
+            box.textContent = res.body.error || 'Ish boshlanmadi.';
+            box.style.display = 'block';
+          });
         } else {
           showPanel('editor');
           var box = document.getElementById('editorError');
