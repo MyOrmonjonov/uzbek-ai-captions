@@ -27,15 +27,28 @@ MODEL_NAME = "gemini-3.5-flash-lite"
 
 PROMPT = """Quyida nutqni tanish dasturi (Whisper) tomonidan avtomatik yozilgan o'zbekcha
 so'zlar ketma-ketligi berilgan. Past resursli til bo'lgani uchun Whisper ba'zan so'zlarni
-turkcha imlo bilan aralashtirib yuboradi (masalan "başqa" o'rniga "boshqa", "uzaq" o'rniga
-"uzoq" bo'lishi kerak) yoki kirillcha qoldiqlar qoladi.
+turkcha imlo bilan aralashtirib yuboradi yoki kirillcha qoldiqlar qoladi.
 
 Vazifang: FAQAT imlo xatolarini standart o'zbek lotin alifbosiga to'g'irlash.
+
+HAR BIR so'zni AYRIM-AYRIM, diqqat bilan tekshir — bironta ham xato so'z o'tkazib
+yubormasliging SHART. Ko'p uchraydigan xato turlari va aniq misollar (chapda xato,
+o'ngda to'g'ri):
+- Turkcha unli/undosh almashinuvi: "başqa"→"boshqa", "uzaq"→"uzoq", "yaxşi"→"yaxshi",
+  "tuğri"→"to'g'ri", "değil"→"emas", "büyük"→"katta"/"buyuk", "iyi"→"yaxshi",
+  "çok"→"juda"/"ko'p".
+- O'zbekchada apostrof bilan yoziladigan tovushlar tushib qolishi: "gapirdi" emas ba'zan
+  kerak bo'lsa "gʻapirdi" kabi noto'g'ri shakl — o'/g' apostroflarini har doim to'g'ri
+  qo'y (masalan "bolgan" emas "bo'lgan", "kop" emas "ko'p", "togri" emas "to'g'ri").
+- Kirillcha harflar qolib ketishi mumkin (masalan "ва", "что") — bunday so'zlarni
+  lotin alifbosiga to'liq o'gir.
+
 Qat'iy qoidalar:
 - Aynan {n} ta so'z berilgan — javobda ham AYNAN {n} ta so'z bo'lishi SHART, bir xil
   tartibda. Hech biri qo'shilmasin, o'chirilmasin, birlashtirilmasin yoki bo'linmasin.
 - So'zlarni QAYTA IBORALASHTIRMA, tarjima qilma — faqat imlosini tuzat.
 - Har bir so'zdagi tinish belgisini (bor bo'lsa) saqlab qol.
+- Agar so'z allaqachon to'g'ri yozilgan bo'lsa, uni o'zgartirmasdan aynan shu holicha qaytar.
 
 So'zlar (JSON massiv): {words_json}
 

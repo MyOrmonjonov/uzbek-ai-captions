@@ -40,6 +40,13 @@ Audioning oxirigacha yetganingizga aniq ishonch hosil qiling — birorta gap yok
 o'tkazib yubormang, yarim yo'lda to'xtamang.
 Nutq o'zbek tilida (lotin alifbosida yoz), ba'zi joylarda ingliz yoki rus so'zlari
 aralashgan bo'lishi mumkin — ularni eshitilgan holicha yoz.
+
+QAT'IY IMLO QOIDASI: yoz FAQAT standart o'zbek lotin alifbosida, turkcha imlo bilan
+ARALASHTIRMA. O'zbek va turkiy tillar yaqin bo'lgani uchun bu xato tez-tez uchraydi —
+har bir so'zni yozishdan oldin diqqat bil tekshir. Aniq misollar (chapdagi noto'g'ri,
+o'ngdagi to'g'ri): "başqa" emas "boshqa", "uzaq" emas "uzoq", "yaxşi" emas "yaxshi",
+"tuğri" emas "to'g'ri", "büyük" emas "katta"/"buyuk", "değil" emas "emas". Kirill
+harflarini ham ishlatma (masalan "ва" emas, "va" deb yoz).
 """
 
 TRANSLATION_INSTRUCTION = """

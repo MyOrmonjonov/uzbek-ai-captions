@@ -5,6 +5,7 @@ from pathlib import Path
 from faster_whisper import WhisperModel
 
 import config
+import spelling_correction
 
 _model: WhisperModel | None = None
 
@@ -86,6 +87,20 @@ def transcribe(audio_path: Path) -> TranscriptionResult:
                 seg_words.append(Word(text=_cyrillic_to_latin_uz(w.word.strip()), start=w.start, end=w.end))
         raw_segments.append((seg, seg_words))
         words.extend(seg_words)
+
+    # This correction's own output isn't what ends up in the final displayed captions (see
+    # hybrid_transcriber.py -- it keeps Gemini's word text, only Whisper's timestamps), but
+    # LEAVING these words uncorrected is worse than wasting the API call: hybrid_transcriber's
+    # _align_words() fuzzy-matches these against Gemini's (now spelling-corrected) words to
+    # anchor each one to a real timestamp, and comparing Whisper's raw Turkish-leaked spelling
+    # against Gemini's clean spelling measurably degrades that match on a long transcript --
+    # confirmed as the cause of captions drifting out of sync partway through a video (more
+    # words fall back to interpolated-instead-of-real timing as match quality drops, and that
+    # drift compounds the further into the transcript you go). Keeping both sides similarly
+    # clean is what keeps the alignment accurate.
+    corrected_texts = spelling_correction.correct_words([w.text for w in words])
+    for w, corrected in zip(words, corrected_texts):
+        w.text = corrected
 
     segments: list[Segment] = []
     for seg, seg_words in raw_segments:
