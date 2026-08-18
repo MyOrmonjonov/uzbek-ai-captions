@@ -105,6 +105,56 @@ function _ae_findActiveComp() {
     return null;
 }
 
+/**
+ * Lists every sequence in the currently open Premiere project, for the panel's sequence picker.
+ * A project with several sequences otherwise has no way to say which one should get captioned
+ * besides whatever Premiere itself currently considers "active" -- easy to get wrong if a user
+ * has more than one open and isn't sure which tab is actually focused. After Effects has no
+ * equivalent concept here (a composition, not a sequence), matching getActiveMediaPath's own
+ * AE/Premiere split -- returns an empty list there, so the panel's picker just stays hidden.
+ * Returns a JSON array of {index, name}, or an "ERROR: ..." string.
+ */
+function listSequences() {
+    try {
+        if (BridgeTalk.appName !== "premierepro") {
+            return "[]";
+        }
+        if (!app.project) {
+            return "ERROR: Premiere'da ochiq loyiha topilmadi.";
+        }
+        var result = [];
+        for (var i = 0; i < app.project.sequences.numSequences; i++) {
+            result.push({ index: i, name: app.project.sequences[i].name });
+        }
+        return JSON.stringify(result);
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    }
+}
+
+/**
+ * Switches Premiere's own "active sequence" to the one at this index in app.project.sequences
+ * -- every other function in this file reads app.project.activeSequence, so this is what makes
+ * the panel's picker actually control which sequence subsequent actions (transcribe, karaoke
+ * burn, kinetic overlay, B-roll) apply to, regardless of which tab happens to be focused inside
+ * Premiere itself.
+ */
+function setActiveSequenceByIndex(index) {
+    try {
+        if (BridgeTalk.appName !== "premierepro" || !app.project) {
+            return "ERROR: Faqat Premiere Pro'da qo'llab-quvvatlanadi.";
+        }
+        var seq = app.project.sequences[index];
+        if (!seq) {
+            return "ERROR: Sequence topilmadi.";
+        }
+        app.project.activeSequence = seq;
+        return "OK";
+    } catch (e) {
+        return "ERROR: " + e.toString();
+    }
+}
+
 function getActiveMediaPath() {
     try {
         if (BridgeTalk.appName === "aftereffects") {

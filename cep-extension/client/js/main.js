@@ -117,6 +117,8 @@
         filePath: document.getElementById('file-path'),
         filePathText: document.getElementById('file-path-text'),
         refreshBtn: document.getElementById('refresh-btn'),
+        sequencePickerField: document.getElementById('sequence-picker-field'),
+        sequenceSelect: document.getElementById('sequence-select'),
         styleSegmented: document.getElementById('style-segmented'),
         translateToggle: document.getElementById('translate-toggle'),
         translatePanel: document.getElementById('translate-panel'),
@@ -317,7 +319,54 @@
     // wasn't enough to rule that out, so this now backs off across a much longer window (5s, 10s,
     // 20s, 35s — 70s total) before giving up, and the final message names that as the likely
     // cause instead of implying the plugin itself is broken.
+    // Only shown once a project actually has 2+ sequences -- with 0 or 1, there's nothing to
+    // choose between and the picker would just be clutter. Re-run alongside every
+    // detectActiveMedia() call (project/sequence set can change between refreshes) rather than
+    // just once at boot.
+    function refreshSequenceList() {
+        var csi = new CSInterface();
+        csi.evalScript('listSequences()', function (result) {
+            var sequences = [];
+            try {
+                if (result && result.indexOf('ERROR:') !== 0) {
+                    sequences = JSON.parse(result);
+                }
+            } catch (e) {
+                sequences = [];
+            }
+            if (!sequences || sequences.length < 2) {
+                els.sequencePickerField.hidden = true;
+                return;
+            }
+            els.sequencePickerField.hidden = false;
+            var previousValue = els.sequenceSelect.value;
+            els.sequenceSelect.innerHTML = '';
+            sequences.forEach(function (seq) {
+                var opt = document.createElement('option');
+                opt.value = String(seq.index);
+                opt.textContent = seq.name;
+                els.sequenceSelect.appendChild(opt);
+            });
+            // Keep the visitor's prior pick across a refresh when it's still a valid option;
+            // otherwise this naturally defaults to whatever Premiere itself reports as active
+            // (index 0 of the list isn't necessarily that -- listSequences() enumerates
+            // app.project.sequences in project order, not "active first").
+            if (previousValue && sequences.some(function (s) { return String(s.index) === previousValue; })) {
+                els.sequenceSelect.value = previousValue;
+            }
+        });
+    }
+
+    els.sequenceSelect.addEventListener('change', function () {
+        var csi = new CSInterface();
+        var index = els.sequenceSelect.value;
+        csi.evalScript('setActiveSequenceByIndex(' + index + ')', function () {
+            detectActiveMedia();
+        });
+    });
+
     function detectActiveMedia(callback) {
+        refreshSequenceList();
         var csi = new CSInterface();
         var attempt = 0;
         var timeoutsMs = [5000, 10000, 20000, 35000];
