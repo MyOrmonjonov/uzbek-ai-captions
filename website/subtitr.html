@@ -160,6 +160,36 @@
   }
   @keyframes wordPop{0%{transform:scale(1);}50%{transform:scale(1.15);}100%{transform:scale(1);}}
   .overlay-word.pop{animation:wordPop .24s ease;}
+
+  /* Mirrors AssSubtitleBuilder's newer templates -- see updateCaptionOverlay's per-template
+     branch. Entrance ones (slide-in/shake/punch/blur-in) animate the whole overlay, only
+     re-triggered when the active word-group actually changes (see isNewGroup); cascade
+     staggers each word's own entrance via an inline animation-delay; color-cycle just loops
+     continuously via CSS, no JS involvement once applied. */
+  @keyframes overlaySlideIn{0%{opacity:0;transform:translateY(24px);}100%{opacity:1;transform:translateY(0);}}
+  .caption-overlay.anim-slide-in{animation:overlaySlideIn .28s ease-out;}
+
+  @keyframes overlayShake{
+    0%{transform:rotate(0deg);}15%{transform:rotate(-6deg);}30%{transform:rotate(6deg);}
+    45%{transform:rotate(-4deg);}60%{transform:rotate(4deg);}100%{transform:rotate(0deg);}
+  }
+  .caption-overlay.anim-shake{animation:overlayShake .4s ease-out;}
+
+  @keyframes overlayPunch{0%{transform:scale(1.6);}55%{transform:scale(.9);}100%{transform:scale(1);}}
+  .caption-overlay.anim-punch{animation:overlayPunch .3s ease-out;}
+
+  @keyframes overlayBlurIn{0%{filter:blur(10px);opacity:0;}100%{filter:blur(0);opacity:1;}}
+  .caption-overlay.anim-blur-in{animation:overlayBlurIn .3s ease-out;}
+
+  @keyframes overlayCascadeIn{0%{opacity:0;transform:translateY(14px);}100%{opacity:1;transform:translateY(0);}}
+  .overlay-word.cascade{opacity:0;animation:overlayCascadeIn .28s ease-out forwards;}
+
+  @keyframes overlayColorCycle{
+    0%{color:#00ffff;}25%{color:#ff00ff;}50%{color:#ffff00;}75%{color:#ffa500;}100%{color:#00ffff;}
+  }
+  .overlay-word.color-cycle{animation:overlayColorCycle 2s linear infinite;}
+
+  .caption-overlay.boxed .overlay-word{background:rgba(0,0,0,.82);padding:2px 8px;border-radius:4px;}
   .video-scrub-bar{
     position:absolute;left:0;right:0;bottom:0;z-index:2;
     display:flex;align-items:center;justify-content:space-between;gap:8px;
@@ -827,7 +857,7 @@
   function recomputeGroups() {
     state.wordGroups = groupWords(state.words, state.renderOptions.groupingMode, state.renderOptions.wordsOnScreen);
     if (state.styleMeta) {
-      updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+      updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
     }
   }
 
@@ -974,7 +1004,14 @@
   }
 
   var lastActiveWordIndex = -1;
-  function updateCaptionOverlay(currentTime) {
+  var lastGroupStart = -1;
+  // Whole-overlay entrance animations (see the matching CSS block near .overlay-word) -- CASCADE
+  // isn't here since it animates each word span individually via its own animation-delay instead.
+  var ENTRANCE_ANIM_CLASS = {
+    SLIDE_IN: 'anim-slide-in', SHAKE: 'anim-shake', PUNCH: 'anim-punch', BLUR_IN: 'anim-blur-in'
+  };
+
+  function updateCaptionOverlay(currentTime, force) {
     var overlay = document.getElementById('captionOverlay');
     if (!state.styleMeta || overlay.style.display === 'none') return;
 
@@ -983,27 +1020,49 @@
     })[0];
     if (!group) {
       overlay.innerHTML = '';
+      overlay.className = 'caption-overlay';
       lastActiveWordIndex = -1;
+      lastGroupStart = -1;
       return;
     }
 
     var meta = state.styleMeta;
     var opts = state.renderOptions;
+    var template = meta.template;
+    var isNewGroup = group[0].start !== lastGroupStart;
+
+    if (template === 'TYPEWRITER') {
+      renderTypewriterOverlay(overlay, group, currentTime, meta, opts);
+      lastGroupStart = group[0].start;
+      lastActiveWordIndex = -1;
+      return;
+    }
+
+    // KARAOKE_FILL/BOXED_FILL (cumulative fill-up-to-playhead) and WORD_POP (which word is
+    // active right now) both depend on currentTime WITHIN the group, so they need a fresh render
+    // every tick. Every other template mirrors a real AssSubtitleBuilder method that renders the
+    // whole chunk as a single static event with just an entrance effect (SLIDE_IN/SHAKE/PUNCH/
+    // BLUR_IN/CASCADE) or a continuous CSS-driven cycle (COLOR_CYCLE) -- re-rendering identical
+    // markup for those every tick would just replay their entrance animation 4x/second instead
+    // of once per group, so skip the rebuild entirely once the group itself hasn't changed.
+    var isFillTemplate = template === 'KARAOKE_FILL' || template === 'BOXED_FILL';
+    var isWordPop = template === 'WORD_POP';
+    if (!isFillTemplate && !isWordPop && !isNewGroup && !force) {
+      return;
+    }
+
     var fontFamily = opts.fontOverride || meta.fontName;
     var fontStyle = 'font-family:' + fontFamily + ',sans-serif;font-weight:' + (meta.bold ? '800' : '600') +
       ';font-size:' + (opts.textSizePercent / 100 * 100) + '%;';
-    // Only KARAOKE_FILL and BOXED_FILL (textually identical to it -- see AssSubtitleBuilder)
-    // use the cumulative fill-up-to-playhead look below; every other template (WORD_POP and the
-    // newer SLIDE_IN/TYPEWRITER/COLOR_CYCLE/SHAKE/PUNCH/CASCADE/BLUR_IN, none of which this
-    // preview replicates frame-for-frame) reads as "highlight whichever word is currently being
-    // spoken" instead -- without this, any template past the original two fell through to
-    // activeIdx's unset -1 default and never highlighted anything, so every one of those newer
-    // styles looked visually identical (plain base-colored text, no accent at all) in this
-    // browser preview even though their real export renders correctly.
-    var isFillTemplate = meta.template === 'KARAOKE_FILL' || meta.template === 'BOXED_FILL';
     var wordsPerLine = opts.wordsPerLine || group.length;
+    var baseColor = opts.textColorHex || meta.primaryColorHex;
+    var accentColor = opts.accentColorHex || meta.highlightColorHex;
+    var strokeStyle = opts.outline !== false ? '-webkit-text-stroke:3px #000;' : '';
+    var isColorCycle = template === 'COLOR_CYCLE';
+    var isCascade = template === 'CASCADE';
+
     var activeIdx = -1;
-    if (!isFillTemplate) {
+    if (isWordPop) {
       for (var i = 0; i < group.length; i++) {
         var w = group[i];
         var nextStart = (i < group.length - 1) ? group[i + 1].start : w.end;
@@ -1011,27 +1070,40 @@
       }
     }
 
-    var baseColor = opts.textColorHex || meta.primaryColorHex;
-    var accentColor = opts.accentColorHex || meta.highlightColorHex;
-    var strokeStyle = opts.outline !== false ? '-webkit-text-stroke:3px #000;' : '';
     var html = group.map(function (w, i) {
       var emphasized = opts.autoEmphasis && isEmphasized(w.text);
-      var color;
+      var extraClass = '';
+      var extraStyle = '';
+      var colorStyle;
       if (isFillTemplate) {
-        color = (currentTime >= w.start || emphasized) ? accentColor : baseColor;
+        colorStyle = 'color:' + ((currentTime >= w.start || emphasized) ? accentColor : baseColor) + ';';
+      } else if (isWordPop) {
+        colorStyle = 'color:' + ((i === activeIdx || emphasized) ? accentColor : baseColor) + ';';
+        if (i === activeIdx) extraClass += ' pop';
+      } else if (isColorCycle) {
+        // Color comes from the color-cycle CSS animation instead of an inline value.
+        extraClass += ' color-cycle';
+        colorStyle = '';
       } else {
-        color = (i === activeIdx || emphasized) ? accentColor : baseColor;
+        // SLIDE_IN / SHAKE / PUNCH / BLUR_IN / CASCADE: plain base color, matching
+        // AssSubtitleBuilder -- these templates have no per-word active-highlight of their own.
+        colorStyle = 'color:' + (emphasized ? accentColor : baseColor) + ';';
       }
-      var popClass = (!isFillTemplate && i === activeIdx) ? ' pop' : '';
+      if (isCascade) {
+        extraClass += ' cascade';
+        extraStyle = 'animation-delay:' + (i * 90) + 'ms;';
+      }
       var weight = emphasized ? ';font-weight:800' : '';
       var text = displayText(w.text, opts);
       var br = (wordsPerLine > 0 && (i + 1) % wordsPerLine === 0 && i < group.length - 1) ? '<br>' : '';
-      return '<span class="overlay-word' + popClass + '" style="' + fontStyle + strokeStyle + 'color:' + color + weight + '">' +
+      return '<span class="overlay-word' + extraClass + '" style="' + fontStyle + strokeStyle + colorStyle + extraStyle + weight + '">' +
         escapeHtml(text) + '</span>' + br;
     }).join('');
+
+    overlay.className = 'caption-overlay' + (template === 'BOXED_FILL' ? ' boxed' : '');
     overlay.innerHTML = html;
 
-    if (!isFillTemplate && activeIdx !== lastActiveWordIndex) {
+    if (isWordPop && activeIdx !== lastActiveWordIndex) {
       var wordEls = overlay.querySelectorAll('.overlay-word');
       var activeEl = wordEls[activeIdx];
       if (activeEl) {
@@ -1040,7 +1112,31 @@
         activeEl.classList.add('pop');
       }
     }
+
+    var entranceClass = ENTRANCE_ANIM_CLASS[template];
+    if (entranceClass) {
+      overlay.classList.remove(entranceClass);
+      void overlay.offsetWidth; // reflow, so the animation restarts
+      overlay.classList.add(entranceClass);
+    }
+
     lastActiveWordIndex = activeIdx;
+    lastGroupStart = group[0].start;
+  }
+
+  function renderTypewriterOverlay(overlay, group, currentTime, meta, opts) {
+    var fontFamily = opts.fontOverride || meta.fontName;
+    var fontStyle = 'font-family:' + fontFamily + ',sans-serif;font-weight:' + (meta.bold ? '800' : '600') +
+      ';font-size:' + (opts.textSizePercent / 100 * 100) + '%;';
+    var strokeStyle = opts.outline !== false ? '-webkit-text-stroke:3px #000;' : '';
+    var baseColor = opts.textColorHex || meta.primaryColorHex;
+    var full = group.map(function (w) { return displayText(w.text, opts); }).join(' ');
+    var groupStart = group[0].start, groupEnd = group[group.length - 1].end;
+    var frac = Math.max(0, Math.min(1, (currentTime - groupStart) / Math.max(groupEnd - groupStart, 0.01)));
+    var visibleChars = Math.ceil(full.length * frac);
+    overlay.className = 'caption-overlay';
+    overlay.innerHTML = '<span class="overlay-word" style="' + fontStyle + strokeStyle + 'color:' + baseColor + '">' +
+      escapeHtml(full.slice(0, visibleChars)) + '</span>';
   }
 
   function escapeHtml(text) {
@@ -1139,7 +1235,7 @@
     state.styleMeta = s;
     document.getElementById('captionOverlay').style.display = 'block';
     applyOverlayPosition(state.renderOptions.position);
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
     var btn = document.getElementById('renderBtn');
     btn.disabled = false;
     document.getElementById('renderBtnLabel').textContent = 'Yuklab olish';
@@ -1172,7 +1268,7 @@
         state.renderOptions.fontOverride = f.value;
         Array.prototype.forEach.call(grid.children, function (c) { c.classList.remove('active'); });
         btn.classList.add('active');
-        updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+        updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
       });
       grid.appendChild(btn);
     });
@@ -1232,7 +1328,7 @@
       btn.classList.add('active');
       state.renderOptions.position = btn.dataset.position;
       applyOverlayPosition(btn.dataset.position);
-      updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+      updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
     });
   });
 
@@ -1262,32 +1358,32 @@
   document.getElementById('textSizeSlider').addEventListener('input', function () {
     state.renderOptions.textSizePercent = parseInt(this.value, 10);
     document.getElementById('textSizeValue').textContent = this.value + '%';
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
 
   document.getElementById('uppercaseToggle').addEventListener('change', function () {
     state.renderOptions.uppercase = this.checked;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
   document.getElementById('autoEmphasisToggle').addEventListener('change', function () {
     state.renderOptions.autoEmphasis = this.checked;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
   document.getElementById('cyrillicToggle').addEventListener('change', function () {
     state.renderOptions.cyrillic = this.checked;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
   document.getElementById('textColorPicker').addEventListener('input', function () {
     state.renderOptions.textColorHex = this.value;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
   document.getElementById('accentColorPicker').addEventListener('input', function () {
     state.renderOptions.accentColorHex = this.value;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
   document.getElementById('outlineToggle').addEventListener('change', function () {
     state.renderOptions.outline = this.checked;
-    updateCaptionOverlay(document.getElementById('editorVideo').currentTime);
+    updateCaptionOverlay(document.getElementById('editorVideo').currentTime, true);
   });
 
   // "Hammasini surish" -- shifts every word's start/end by a cumulative delta and redraws
