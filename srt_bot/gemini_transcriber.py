@@ -6,7 +6,18 @@ from google import genai
 from google.genai import types
 
 import gemini_keys
+import media
 from transcriber import Segment, TranscriptionResult, Word
+
+# A single generate_content call asking for a full word-by-word JSON transcript of the whole
+# file scales with audio length -- a 37-minute video was observed coming back truncated around
+# the 29-minute mark (finish_reason=MAX_TOKENS, confirmed via the logging below), losing the
+# rest of the transcript (and, downstream, the rest of the captions) silently. 10 minutes is a
+# safe margin under that observed threshold for any speech density. Chunks are transcribed as
+# separate Gemini calls (each still going through gemini_keys.call_with_rotation on its own, so
+# a key exhausting its quota partway through a long video just rotates like any other call) and
+# their word/segment timestamps offset back onto the original, unsplit audio's timeline.
+CHUNK_SECONDS = 600
 
 # Pinned (not "-latest") so cost and quota behavior stay predictable — "-latest" silently
 # started resolving to a pricier newer model mid-project and burned through the free-tier daily
@@ -110,11 +121,36 @@ def _interpolate_words(text: str, start: float, end: float) -> list[Word]:
 
 
 def transcribe(audio_path: Path, translate_to: str | None = None) -> TranscriptionResult:
+    duration = media.get_duration_seconds(audio_path)
+    if duration <= CHUNK_SECONDS:
+        return _transcribe_one_call(audio_path, translate_to, time_offset=0.0)
+
+    logger.info("Audio %.1fs long, splitting into %ds chunks for transcription", duration, CHUNK_SECONDS)
+    all_words: list[Word] = []
+    all_segments: list[Segment] = []
+    start = 0.0
+    chunk_index = 0
+    while start < duration:
+        chunk_duration = min(CHUNK_SECONDS, duration - start)
+        chunk_path = audio_path.with_name(f"{audio_path.stem}_chunk{chunk_index}{audio_path.suffix}")
+        media.extract_audio_chunk(audio_path, chunk_path, start, chunk_duration)
+        try:
+            chunk_result = _transcribe_one_call(chunk_path, translate_to, time_offset=start)
+        finally:
+            chunk_path.unlink(missing_ok=True)
+        all_words.extend(chunk_result.words)
+        all_segments.extend(chunk_result.segments)
+        start += chunk_duration
+        chunk_index += 1
+    return TranscriptionResult(words=all_words, segments=all_segments)
+
+
+def _transcribe_one_call(audio_path: Path, translate_to: str | None, time_offset: float) -> TranscriptionResult:
     return gemini_keys.call_with_rotation(
-        lambda client: _transcribe_with_client(client, audio_path, translate_to))
+        lambda client: _transcribe_with_client(client, audio_path, translate_to, time_offset))
 
 
-def _transcribe_with_client(client: genai.Client, audio_path: Path, translate_to: str | None) -> TranscriptionResult:
+def _transcribe_with_client(client: genai.Client, audio_path: Path, translate_to: str | None, time_offset: float) -> TranscriptionResult:
     uploaded = client.files.upload(file=str(audio_path))
     try:
         response = client.models.generate_content(
@@ -157,8 +193,11 @@ def _transcribe_with_client(client: genai.Client, audio_path: Path, translate_to
         text = str(item.get("text", "")).strip()
         if not text:
             continue
-        start = float(item["start"])
-        end = float(item["end"])
+        # Gemini's start/end are relative to whatever audio it was actually given -- a chunk,
+        # when this call is one of several -- so time_offset shifts them back onto the
+        # original, unsplit audio's own timeline (0.0 for a single-call, unchunked transcription).
+        start = float(item["start"]) + time_offset
+        end = float(item["end"]) + time_offset
         if end < start:
             end = start
         segments.append(Segment(text=text, start=start, end=end))
