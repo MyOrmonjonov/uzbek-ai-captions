@@ -1048,6 +1048,16 @@
           '<video class="style-preview-video" src="assets/karaoke-previews/' + s.key + '.mp4" ' +
           'muted loop autoplay playsinline></video>' +
           '<div class="style-name">' + s.displayName + '</div>';
+        // The autoplay attribute alone is unreliable for elements inserted after the initial
+        // page parse (unlike a <video autoplay> present in the original HTML) -- an explicit
+        // .play() call is what actually gets the karaoke preview clips animating in the gallery.
+        // .catch() swallows the rare case a browser's autoplay policy still blocks it (silent,
+        // not worth surfacing -- the card still shows the style name either way).
+        var previewVideo = card.querySelector('video');
+        var playPromise = previewVideo.play();
+        if (playPromise) {
+          playPromise.catch(function () { /* autoplay blocked -- card still shows the name */ });
+        }
         card.addEventListener('click', function () {
           document.querySelectorAll('#styleGrid .style-card').forEach(function (c) { c.classList.remove('picked'); });
           card.classList.add('picked');
