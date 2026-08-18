@@ -19,6 +19,12 @@ package org.example.plugin.model;
  * "on", matching the style presets' original always-on 5px outline -- a primitive default of
  * false would have silently stripped every preset's outline the moment the desktop CEP path
  * (which never sends RenderOptions at all) was compared against a web request that omits it.
+ *
+ * targetResolution is the desired output HEIGHT in pixels as a string ("720", "1080", "2160"
+ * for 4K) -- null (or anything that doesn't parse) means "keep the source's own resolution", the
+ * original always-true behavior. Width is derived from it preserving the source's aspect ratio
+ * (see KaraokeCaptionService.resolveOutputResolution), not sent separately, since every style
+ * this tool targets is a fixed-aspect vertical export.
  */
 public record RenderOptions(
         Integer wordsOnScreen,
@@ -32,5 +38,6 @@ public record RenderOptions(
         boolean cyrillic,
         String textColorHex,
         String accentColorHex,
-        Boolean outline) {
+        Boolean outline,
+        String targetResolution) {
 }

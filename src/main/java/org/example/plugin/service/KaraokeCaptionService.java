@@ -102,16 +102,17 @@ public class KaraokeCaptionService {
 
             state.stage = "preparing";
             state.progressPercent = 5;
-            int[] resolution = detectResolution(videoPath);
+            int[] sourceResolution = detectResolution(videoPath);
+            int[] outputResolution = resolveOutputResolution(sourceResolution, options);
 
-            String ass = AssSubtitleBuilder.build(words, style, resolution[0], resolution[1], options);
+            String ass = AssSubtitleBuilder.build(words, style, outputResolution[0], outputResolution[1], options);
             Path assPath = sessionDir.resolve("captions.ass");
             Files.writeString(assPath, ass, StandardCharsets.UTF_8);
 
             state.stage = "encoding";
             state.progressPercent = 15;
             Path outputPath = sessionDir.resolve("karaoke-" + style.key() + ".mp4");
-            burnCaptions(videoPath, assPath, outputPath);
+            burnCaptions(videoPath, assPath, outputPath, sourceResolution, outputResolution);
 
             state.outputPath = outputPath.toString();
             state.stage = "done";
@@ -153,7 +154,31 @@ public class KaraokeCaptionService {
         return new int[]{0, 0};
     }
 
-    private void burnCaptions(Path videoPath, Path assPath, Path outputPath) throws IOException {
+    /**
+     * Resolves options.targetResolution() (a desired output HEIGHT in pixels, e.g. "720") against
+     * the source's actual dimensions, preserving its aspect ratio -- width and height are both
+     * rounded up to even numbers (yuv420p requires it). Falls back to the source resolution
+     * unchanged when targetResolution is absent, unparseable, or the source's own dimensions
+     * couldn't be detected (nothing to compute an aspect ratio from).
+     */
+    private static int[] resolveOutputResolution(int[] source, RenderOptions options) {
+        if (options == null || options.targetResolution() == null || source[0] <= 0 || source[1] <= 0) {
+            return source;
+        }
+        int targetHeight;
+        try {
+            targetHeight = Integer.parseInt(options.targetResolution());
+        } catch (NumberFormatException e) {
+            return source;
+        }
+        if (targetHeight <= 0) {
+            return source;
+        }
+        int width = (int) Math.round(source[0] * (targetHeight / (double) source[1]));
+        return new int[]{width + (width % 2), targetHeight + (targetHeight % 2)};
+    }
+
+    private void burnCaptions(Path videoPath, Path assPath, Path outputPath, int[] sourceResolution, int[] outputResolution) throws IOException {
         // ASS paths go through libass's own mini-language where ':' and '\' are special, so on
         // Windows an absolute path like "C:\...\captions.ass" must be escaped before being
         // embedded in the -vf filtergraph string, not passed as a separate argument (ffmpeg's
@@ -163,11 +188,18 @@ public class KaraokeCaptionService {
         // "ass=C\:\\Users\\..." failed, "ass='C\:\\Users\\...'" succeeded) -- the escaped path
         // additionally needs to be wrapped in single quotes.
         String escapedAssPath = assPath.toString().replace("\\", "\\\\").replace(":", "\\:");
+        boolean needsScale = outputResolution[0] > 0
+                && (outputResolution[0] != sourceResolution[0] || outputResolution[1] != sourceResolution[1]);
+        // scale must come before ass in the filter chain -- the subtitle has to be drawn onto the
+        // already-resized frame (its own PlayResX/PlayResY, from AssSubtitleBuilder, was computed
+        // against outputResolution) rather than the source's original dimensions.
+        String vf = (needsScale ? "scale=" + outputResolution[0] + ":" + outputResolution[1] + "," : "")
+                + "ass='" + escapedAssPath + "'";
         List<String> command = List.of(
                 properties.getFfmpegPath(),
                 "-y",
                 "-i", videoPath.toString(),
-                "-vf", "ass='" + escapedAssPath + "'",
+                "-vf", vf,
                 "-c:a", "copy",
                 // Without this, moov (the index a player needs before it can start decoding)
                 // lands at the end of the file -- fine once fully downloaded, but breaks preview-

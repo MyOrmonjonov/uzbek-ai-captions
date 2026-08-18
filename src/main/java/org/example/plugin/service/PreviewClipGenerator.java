@@ -31,7 +31,7 @@ final class PreviewClipGenerator {
     // wordsPerLine=3 (not the 5-word default) matches every existing karaoke-previews/*.mp4's
     // two-line "Salom dunyo bu / ravon caption" wrap.
     private static final RenderOptions PREVIEW_OPTIONS =
-            new RenderOptions(5, 3, 100, "bottom", false, null, "custom", false, false, null, null, true);
+            new RenderOptions(5, 3, 100, "bottom", false, null, "custom", false, false, null, null, true, null);
 
     private PreviewClipGenerator() {
     }
