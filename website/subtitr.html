@@ -945,9 +945,18 @@
     var fontFamily = opts.fontOverride || meta.fontName;
     var fontStyle = 'font-family:' + fontFamily + ',sans-serif;font-weight:' + (meta.bold ? '800' : '600') +
       ';font-size:' + (opts.textSizePercent / 100 * 100) + '%;';
+    // Only KARAOKE_FILL and BOXED_FILL (textually identical to it -- see AssSubtitleBuilder)
+    // use the cumulative fill-up-to-playhead look below; every other template (WORD_POP and the
+    // newer SLIDE_IN/TYPEWRITER/COLOR_CYCLE/SHAKE/PUNCH/CASCADE/BLUR_IN, none of which this
+    // preview replicates frame-for-frame) reads as "highlight whichever word is currently being
+    // spoken" instead -- without this, any template past the original two fell through to
+    // activeIdx's unset -1 default and never highlighted anything, so every one of those newer
+    // styles looked visually identical (plain base-colored text, no accent at all) in this
+    // browser preview even though their real export renders correctly.
+    var isFillTemplate = meta.template === 'KARAOKE_FILL' || meta.template === 'BOXED_FILL';
     var wordsPerLine = opts.wordsPerLine || group.length;
     var activeIdx = -1;
-    if (meta.template === 'WORD_POP') {
+    if (!isFillTemplate) {
       for (var i = 0; i < group.length; i++) {
         var w = group[i];
         var nextStart = (i < group.length - 1) ? group[i + 1].start : w.end;
@@ -961,12 +970,12 @@
     var html = group.map(function (w, i) {
       var emphasized = opts.autoEmphasis && isEmphasized(w.text);
       var color;
-      if (meta.template === 'KARAOKE_FILL') {
+      if (isFillTemplate) {
         color = (currentTime >= w.start || emphasized) ? accentColor : baseColor;
       } else {
         color = (i === activeIdx || emphasized) ? accentColor : baseColor;
       }
-      var popClass = (meta.template === 'WORD_POP' && i === activeIdx) ? ' pop' : '';
+      var popClass = (!isFillTemplate && i === activeIdx) ? ' pop' : '';
       var weight = emphasized ? ';font-weight:800' : '';
       var text = displayText(w.text, opts);
       var br = (wordsPerLine > 0 && (i + 1) % wordsPerLine === 0 && i < group.length - 1) ? '<br>' : '';
@@ -975,7 +984,7 @@
     }).join('');
     overlay.innerHTML = html;
 
-    if (meta.template === 'WORD_POP' && activeIdx !== lastActiveWordIndex) {
+    if (!isFillTemplate && activeIdx !== lastActiveWordIndex) {
       var wordEls = overlay.querySelectorAll('.overlay-word');
       var activeEl = wordEls[activeIdx];
       if (activeEl) {
