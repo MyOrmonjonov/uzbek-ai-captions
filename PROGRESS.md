@@ -1805,3 +1805,68 @@ tekshirilganda 11 ta commit borligi aniqlandi (2026-08-13 11:11 dan 2026-08-14 0
   takrorlanaveradi.
 - Sinov video/audio bilan Gemini transkripsiya aniqligini (foydalanuvchi so'ragan "98%")
   hali real solishtirib tekshirilmagan — namuna fayl kutilmoqda.
+
+## 2026-08-18 — Export rezolyutsiyasi, sequence picker, uslub preview'lar tuzatildi, uzun videolarda subtitr sinxron/kesilish muammolari hal qilindi
+
+- **Export rezolyutsiyasi qo'shildi** (`e2b745a`, `b0aee6b`): `RenderOptions.targetResolution`
+  (720p/1080p/4K/manba) `KaraokeCaptionService` orqali oqadi — `resolveOutputResolution` manba
+  aspekt nisbatidan mos kenglikni hisoblaydi (yuv420p uchun juft songa yaxlitlab),
+  `burnCaptions` `ass=` filtridan oldin `scale=` filtrini qo'shadi. Onlayn vositaga ham
+  "Sifat" tanlovi qo'shildi (`renderOptions.targetResolution`), faqat export'ga ta'sir qiladi,
+  jonli preview'ga tegmaydi. Shu bilan birga `WebUploadStore` xotirada saqlanishi sabab
+  server qayta ishga tushganda eskirib qolgan `uploadId` uchun avtomatik qayta-yuklash
+  (silent re-upload + retry) qo'shildi.
+- **"Sifat" tanlovi ko'rinmasligi tuzatildi** (`35b3c58`): inline qator "yo'q ekan" deb
+  xabar qilindi (foydalanuvchi ko'rmagan, garchi jonli bo'lsa ham) — endi "Yuklab olish"
+  bosilganda majburiy modal ochiladi, tasdiqlanmaguncha hech narsa qilmaydi.
+- **8 ta yangi uslubning har biriga o'z animatsiyasi** (`22730d0`): oldingi tuzatish barcha
+  uslubni WORD_POP'dan olingan bitta umumiy "faol so'zni ajratish" yo'liga solib qo'ygan edi
+  ("har bir uslubning o'z animatsiyasi bor, lekin bosganda hammasi bir xil animatsiyada
+  chiqyapti"). `updateCaptionOverlay` endi `AssSubtitleBuilder`ga mos ravishda har bir
+  shablon bo'yicha tarmoqlanadi (SLIDE_IN/SHAKE/PUNCH/BLUR_IN/CASCADE — statik, faqat kirish
+  effekti; TYPEWRITER — o'sib boruvchi substring). Pauza holatida uslub almashtirilganda ham
+  ("uslub kartasi tanlanadi, lekin videoda o'zgarish yo'q") majburiy yangilanish uchun `force`
+  parametri qo'shildi.
+- **Premiere panelga sequence picker** (`b791bb6`): bitta loyihada bir nechta sequence
+  bo'lsa, panel doim `app.project.activeSequence`ga (ya'ni tasodifan fokusda turgan tab'ga)
+  qarardi ("bitta proyektda bir nechta video bo'lsa yozish uchun hammasiga yozishga to'g'ri
+  kelyapti"). Yangi `listSequences()`/`setActiveSequenceByIndex()` (faqat Premiere, AE'da
+  tegishli tushuncha yo'q) + panelda 2+ sequence bo'lsagina ko'rinadigan "Sequence" dropdown.
+- **Uzun videolarda subtitr sinxronizatsiyasi buzilishi tuzatildi** (`f28cbe9`): kechagi
+  tuzatish (`5a5f375`) `transcriber.py`ning o'z imlo-tuzatish bosqichini "behuda" deb olib
+  tashlagan edi (chiqishi yakuniy subtitr'ga kirmaydi — `hybrid_transcriber` Gemini so'zini
+  saqlaydi). Lekin uning yon ta'siri muhim ekan: `_align_words()` Whisper so'zlarini Gemini
+  so'zlariga moslashtirib haqiqiy timestamp biriktiradi, va moslik sifati ikki taraf
+  matnining bir-biriga qanchalik o'xshashligiga bog'liq. Whisper tuzatilmagan (turkcha
+  imlosi bilan) qolib, Gemini tuzatilgan (toza) bo'lgach, orasidagi farq kattalashdi —
+  ko'proq so'z interpolatsiya qilingan (haqiqiy emas) vaqtga tushib qoldi, va bu og'ish
+  transkript davomida to'planib boradi. Xabar qilingan: "yarmigacha yaxshi, qolgani buzilib
+  ketgan". Tuzatish qaytarildi (endi 5 ta aylanma Gemini key borligi uchun qo'shimcha chaqiruv
+  arziydi) + ikkala Gemini prompt turkcha-imlo sizib chiqishi uchun aniq misollar bilan
+  kuchaytirildi.
+- **Uzun videolarda subtitr oxirigacha yozilmasligi tuzatildi** (`b6a322d`): bitta
+  `generate_content` chaqiruvi bilan to'liq so'zma-so'z JSON transkript so'rash audio
+  uzunligiga qarab cheklanar ekan — 37 daqiqalik video ~29-daqiqada kesib qaytardi
+  (`finish_reason` logi orqali tasdiqlangan), transkriptning qolgan qismi va shu bilan
+  subtitrlar jimgina yo'qolardi. Xabar qilingan: "video qancha bo'lsa ham subtitr oxirigacha
+  yozilishi kerak". `gemini_transcriber.transcribe()` endi `CHUNK_SECONDS` (600s)dan uzun
+  audio'ni yangi `media.py` yordamchilari orqali bo'laklarga bo'ladi (`get_duration_seconds`
+  — ffprobe yo'qligi uchun ffmpeg'ning o'z `-i` stderr probe'i; `extract_audio_chunk` — PCM
+  WAV'da xavfsiz `-c copy` kesish), har bir bo'lakni alohida Gemini chaqiruvi orqali
+  transkripsiya qiladi (har biri hali ham mustaqil `gemini_keys.call_with_rotation` orqali —
+  video o'rtasida key tugab qolsa ham oddiy holatdek aylanaveradi), va birlashtirishdan oldin
+  har bir bo'lak timestamp'ini asl vaqt o'qiga qaytarib qo'yadi. 11 daqiqalik sintetik test
+  fayl bilan tekshirildi: 600s'dan oldingi va keyingi bo'laklar ikkalasi ham to'g'ri siljigan
+  holda bitta 0-660s o'qiga qo'shildi.
+- **Muhim topilma — bu ikki oxirgi tuzatish (`f28cbe9`, `b6a322d`) push qilingandan keyin
+  CI'ga umuman tegmagan** — `srt_bot/**` `build-backend.yml`ning `push.paths`ida yo'qligi
+  ilgari qayd qilingan muammo aynan shu holatda yana ko'zga tashlandi: commit'lar git'da
+  toza, lekin production serverda hali eskirgan kod ishlab turibdi edi, deploy qo'lda SSH
+  orqali kerak bo'ldi.
+
+### Keyingi qadam
+- `srt_bot/` (va `website/`) uchun CI avtomatlashtirish hali qo'shilmagan — yuqoridagi topilma
+  buni yana bir bor tasdiqladi, bu safar amaliy oqibati bilan (ikki muhim sinxron/kesilish
+  tuzatish serverga yetib bormay qoldi). Qo'shish tavsiya hali kuchda.
+- Sinov video/audio bilan Gemini transkripsiya aniqligini (foydalanuvchi so'ragan "98%")
+  hali real solishtirib tekshirilmagan — namuna fayl kutilmoqda.
